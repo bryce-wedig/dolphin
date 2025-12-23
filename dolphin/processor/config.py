@@ -301,6 +301,23 @@ class ModelConfig(Config):
                             join_list,
                         ]
                     )
+                elif model == "MGE_MULTI_SET":
+                    mge_configs = self.get_lens_light_mge_profile_kwargs()
+                    n_sets = mge_configs[i].get("n_sets", 2)
+                    
+                    join_list = ["sigma_min", "sigma_max"]
+                    for s in range(n_sets):
+                        join_list.extend([f"e1_set{s}", f"e2_set{s}"])
+                    
+                    joint_lens_light_with_lens_light.append(
+                        [i, i + num_lens_light_profile_central, join_list]
+                    )
+
+                elif model == "MGE_MULTI_SET_POINT":
+                    join_list = ["e1", "e2", "sigma_min", "sigma_max"]
+                    joint_lens_light_with_lens_light.append(
+                        [i, i + num_lens_light_profile_central, join_list]
+                    )
 
         if self.number_of_bands > 1 and self.num_satellites > 0:
             for i in range(self.num_satellites):
@@ -364,7 +381,7 @@ class ModelConfig(Config):
             # 'position_uncertainty': 0.00004,
             # 'check_solver': False,
             # 'solver_tolerance': 0.001,
-            "check_positive_flux": True,
+            "check_positive_flux": False,
             "check_bounds": True,
             "bands_compute": [True] * self.number_of_bands,
             "image_likelihood_mask_list": self.get_masks(),
@@ -804,6 +821,38 @@ class ModelConfig(Config):
         """Return `lens_light_model_list`."""
         return self.get_lens_light_model_list_with_flags()[0]
 
+    def get_lens_light_mge_profile_kwargs(self):
+        """Get profile initialization kwargs for MGE lens light models.
+        
+        Returns the n_sets and n_gaussians_per_set configuration for each
+        MGE profile in the lens light model list.
+        
+        :return: list of profile kwargs dictionaries
+        :rtype: list
+        """
+        lens_light_model_list = self.get_lens_light_model_list()
+        profile_kwargs_list = []
+        
+        for i, model in enumerate(lens_light_model_list):
+            if model == "MGE_MULTI_SET":
+                try:
+                    mge_config = self.settings["lens_light_option"]["mge_config"][i]
+                except (KeyError, TypeError, IndexError):
+                    mge_config = {"n_sets": 2, "n_gaussians_per_set": 30}
+                profile_kwargs_list.append(mge_config)
+                
+            elif model == "MGE_MULTI_SET_POINT":
+                try:
+                    mge_config = self.settings["lens_light_option"]["mge_config"][i]
+                except (KeyError, TypeError, IndexError):
+                    mge_config = {"n_gaussians": 10}
+                profile_kwargs_list.append(mge_config)
+                
+            else:
+                profile_kwargs_list.append({})
+        
+        return profile_kwargs_list
+
     def get_lens_light_model_list_with_flags(self):
         """Return `lens_light_model_list` and `satellite_flags`.
 
@@ -1081,6 +1130,115 @@ class ModelConfig(Config):
                 sigma.append(_sigma)
                 lower.append(_lower)
                 upper.append(_upper)
+
+            elif model == "MGE_MULTI_SET":
+                mge_configs = self.get_lens_light_mge_profile_kwargs()
+                mge_config = mge_configs[i]
+                n_sets = mge_config.get("n_sets", 2)
+                n_gaussians_per_set = mge_config.get("n_gaussians_per_set", 30)
+                n_total = n_sets * n_gaussians_per_set
+                
+                pixel_scale = np.min(self.pixel_size)
+                
+                try:
+                    sigma_min_default = self.settings["lens_light_option"]["mge_sigma_min"]
+                except (KeyError, TypeError):
+                    sigma_min_default = 0.2 * pixel_scale
+                
+                try:
+                    sigma_max_default = self.settings["lens_light_option"]["mge_sigma_max"]
+                except (KeyError, TypeError):
+                    try:
+                        sigma_max_default = self.settings["guess_params"]["lens"][0]["theta_E"] * 2.5
+                    except (KeyError, TypeError):
+                        sigma_max_default = 2.5
+                
+                _fixed = {"sigma_min": sigma_min_default, "sigma_max": sigma_max_default}
+                _init = {
+                    "amp": np.ones(n_total),
+                    "sigma_min": sigma_min_default,
+                    "sigma_max": sigma_max_default,
+                    "center_x": center_x,
+                    "center_y": center_y,
+                }
+                _sigma = {
+                    "sigma_min": 0.01,
+                    "sigma_max": 0.1,
+                    "center_x": np.max(self.pixel_size) / 10.0,
+                    "center_y": np.max(self.pixel_size) / 10.0,
+                }
+                _lower = {
+                    "sigma_min": 0.1 * pixel_scale,
+                    "sigma_max": 0.5,
+                    "center_x": center_x - bound,
+                    "center_y": center_y - bound,
+                }
+                _upper = {
+                    "sigma_min": pixel_scale,
+                    "sigma_max": 10.0,
+                    "center_x": center_x + bound,
+                    "center_y": center_y + bound,
+                }
+                
+                for s in range(n_sets):
+                    _init[f"e1_set{s}"] = 0.0
+                    _init[f"e2_set{s}"] = 0.0
+                    _sigma[f"e1_set{s}"] = 0.05
+                    _sigma[f"e2_set{s}"] = 0.05
+                    _lower[f"e1_set{s}"] = -0.5
+                    _lower[f"e2_set{s}"] = -0.5
+                    _upper[f"e1_set{s}"] = 0.5
+                    _upper[f"e2_set{s}"] = 0.5
+                
+                fixed.append(_fixed)
+                init.append(_init)
+                sigma.append(_sigma)
+                lower.append(_lower)
+                upper.append(_upper)
+
+            elif model == "MGE_MULTI_SET_POINT":
+                mge_configs = self.get_lens_light_mge_profile_kwargs()
+                mge_config = mge_configs[i]
+                n_gaussians = mge_config.get("n_gaussians", 10)
+                
+                pixel_scale = np.min(self.pixel_size)
+                sigma_min_ps = 0.2 * pixel_scale
+                sigma_max_ps = 2.0 * pixel_scale
+                
+                _fixed = {"sigma_min": sigma_min_ps, "sigma_max": sigma_max_ps}
+                _init = {
+                    "amp": np.ones(n_gaussians),
+                    "sigma_min": sigma_min_ps,
+                    "sigma_max": sigma_max_ps,
+                    "e1": 0.0,
+                    "e2": 0.0,
+                    "center_x": center_x,
+                    "center_y": center_y,
+                }
+                _sigma = {
+                    "e1": 0.02,
+                    "e2": 0.02,
+                    "center_x": np.max(self.pixel_size) / 10.0,
+                    "center_y": np.max(self.pixel_size) / 10.0,
+                }
+                _lower = {
+                    "e1": -0.3,
+                    "e2": -0.3,
+                    "center_x": center_x - bound,
+                    "center_y": center_y - bound,
+                }
+                _upper = {
+                    "e1": 0.3,
+                    "e2": 0.3,
+                    "center_x": center_x + bound,
+                    "center_y": center_y + bound,
+                }
+                
+                fixed.append(_fixed)
+                init.append(_init)
+                sigma.append(_sigma)
+                lower.append(_lower)
+                upper.append(_upper)
             else:
                 raise ValueError(
                     "{} not implemented as a lens light" "model!".format(model)
@@ -1137,8 +1295,8 @@ class ModelConfig(Config):
                     {
                         "R_sersic": 0.04,
                         "n_sersic": 0.5,
-                        "center_y": -2.0,
-                        "center_x": -2.0,
+                        "center_y": -0.5,
+                        "center_x": -0.5,
                         "e1": -0.5,
                         "e2": -0.5,
                     }
@@ -1148,8 +1306,8 @@ class ModelConfig(Config):
                     {
                         "R_sersic": 0.5,
                         "n_sersic": 8.0,
-                        "center_y": 2.0,
-                        "center_x": 2.0,
+                        "center_y": 0.5,
+                        "center_x": 0.5,
                         "e1": 0.5,
                         "e2": 0.5,
                     }
@@ -1180,13 +1338,13 @@ class ModelConfig(Config):
                     }
                 )
                 sigma.append(
-                    {"center_x": 0.5, "center_y": 0.5, "beta": 0.010 / 10.0, "n_max": 2}
+                    {"center_x": 0.1, "center_y": 0.1, "beta": 0.010 / 10.0, "n_max": 2}  # 0.5, 
                 )
                 lower.append(
-                    {"center_x": -1.2, "center_y": -1.2, "beta": 0.02, "n_max": -1}
+                    {"center_x": -0.5, "center_y": -0.5, "beta": 0.02, "n_max": -1}  # -1.2
                 )
                 upper.append(
-                    {"center_x": 1.2, "center_y": 1.2, "beta": 0.20, "n_max": 55}
+                    {"center_x": 0.5, "center_y": 0.5, "beta": 0.20, "n_max": 55}  # 1.2
                 )
                 shapelets_index += 1
             else:
