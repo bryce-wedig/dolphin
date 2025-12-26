@@ -105,6 +105,86 @@ class Processor(object):
         if log and pool.is_master():
             log_file.close()
 
+    def reconstruct_source(
+        self,
+        lens_name,
+        model_id,
+        reconstruction_id=None,
+        band_index=0,
+        source_grid_kwargs=None,
+        regularization_kwargs=None,
+        save_output=True,
+        verbose=True,
+        show_progress=True,
+    ):
+        """Perform pixelated source reconstruction using a previously fitted lens model.
+
+        This method loads the best-fit lens model from a parametric fitting run
+        and reconstructs the source light on a pixel grid using semi-linear
+        inversion with regularization.
+
+        This is a POST-PROCESSING step that should be run after parametric
+        fitting (via the `swim` method) has determined the lens model parameters.
+
+        :param lens_name: name of the lens system
+        :type lens_name: `str`
+        :param model_id: identifier of the parametric fitting run to use for
+            the lens model parameters
+        :type model_id: `str`
+        :param reconstruction_id: identifier for this reconstruction output.
+            If None, defaults to "{model_id}_recon"
+        :type reconstruction_id: `str` or `None`
+        :param band_index: index of band to reconstruct (for multi-band data)
+        :type band_index: `int`
+        :param source_grid_kwargs: optional override for source grid settings.
+            Keys can include: 'pixel_width', 'num_pixels_x', 'num_pixels_y',
+            'ra_at_xy_0', 'dec_at_xy_0'
+        :type source_grid_kwargs: `dict` or `None`
+        :param regularization_kwargs: optional override for regularization settings.
+            Keys can include: 'type' ('zeroth_order', 'gradient', 'curvature'),
+            'lambda_bounds' ([lower, upper]), 'lambda_tolerance'
+        :type regularization_kwargs: `dict` or `None`
+        :param save_output: if True, save reconstruction results to file
+        :type save_output: `bool`
+        :param verbose: if True, print progress messages
+        :type verbose: `bool`
+        :param show_progress: if True, show progress bar during computation
+        :type show_progress: `bool`
+        :return: reconstruction result dictionary
+        :rtype: `dict`
+        """
+        from dolphin.analysis.source_reconstruction import (
+            PixelatedSourceReconstructor,
+        )
+
+        if reconstruction_id is None:
+            reconstruction_id = f"{model_id}_recon"
+
+        if verbose:
+            print(f"Starting pixelated source reconstruction for {lens_name}")
+            print(f"Using lens model from: {model_id}")
+
+        # Create reconstructor and run reconstruction
+        reconstructor = PixelatedSourceReconstructor(self.io_directory)
+
+        result = reconstructor.reconstruct(
+            lens_name=lens_name,
+            model_id=model_id,
+            band_index=band_index,
+            source_grid_kwargs=source_grid_kwargs,
+            regularization_kwargs=regularization_kwargs,
+            verbose=verbose,
+            show_progress=show_progress,
+        )
+
+        # Save output if requested
+        if save_output:
+            if verbose:
+                print(f"Saving reconstruction output as: {reconstruction_id}")
+            reconstructor.save_reconstruction(lens_name, reconstruction_id, result)
+
+        return result
+
     def get_lens_config(self, lens_name):
         """Get the `ModelConfig` object for a lens.
 

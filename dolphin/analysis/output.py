@@ -1021,3 +1021,369 @@ class Output(Processor):
             plt.show()
 
         return magnifications
+
+    def load_reconstruction_output(self, lens_name, reconstruction_id):
+        """Load a source reconstruction result.
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :return: reconstruction result dictionary
+        :rtype: `dict`
+        """
+        return self.file_system.load_reconstruction_output(lens_name, reconstruction_id)
+
+    def plot_reconstruction_overview(
+        self,
+        lens_name,
+        reconstruction_id,
+        band_index=0,
+        show_caustics=True,
+        source_cmap="magma",
+        residual_cmap="RdBu_r",
+        figsize=(20, 4),
+        v_max_residual=5,
+    ):
+        """Plot source reconstruction results overview.
+
+        Creates a 5-panel figure showing:
+        1. Reconstructed source (with optional caustics overlay)
+        2. Lensed source image (unconvolved)
+        3. Lensed source (PSF-convolved)
+        4. Full model (lens light + source)
+        5. Normalized residuals
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :param band_index: band index (for multi-band data)
+        :type band_index: `int`
+        :param show_caustics: if True, overlay caustics on source plot
+        :type show_caustics: `bool`
+        :param source_cmap: colormap for source and model images
+        :type source_cmap: `str`
+        :param residual_cmap: colormap for residual plot
+        :type residual_cmap: `str`
+        :param figsize: figure size (width, height)
+        :type figsize: `tuple`
+        :param v_max_residual: maximum value for residual colorbar (in sigma)
+        :type v_max_residual: `float`
+        :return: matplotlib figure
+        :rtype: `matplotlib.figure.Figure`
+        """
+        import matplotlib.pyplot as plt
+        from lenstronomy.LensModel.lens_model import LensModel
+        from lenstronomy.LensModel.lens_model_extensions import LensModelExtensions
+
+        # Load reconstruction
+        result = self.load_reconstruction_output(lens_name, reconstruction_id)
+
+        source_image = result["source_image"]
+        lensed_image = result["lensed_image"]
+        convolved_image = result["convolved_image"]
+        residual = result["residual"]
+        background_rms = result["background_rms"]
+        source_extent = result["source_grid_extent"]
+        image_extent = result["image_grid_extent"]
+        kwargs_lens = result["kwargs_lens"]
+        magnification = result["magnification"]
+        optimal_lambda = result["optimal_lambda"]
+
+        # Compute lensed source convolved (without lens light) for visualization
+        import scipy.signal
+        # Get PSF from the parametric model
+        model_id = result["lens_model_id"]
+        output = self.file_system.load_output(lens_name, model_id)
+        multi_band_list_out = output.get("multi_band_list_out", [])
+        if multi_band_list_out and len(multi_band_list_out) > band_index:
+            psf_kernel = multi_band_list_out[band_index][1].get("kernel_point_source", None)
+            if psf_kernel is not None:
+                source_convolved = scipy.signal.fftconvolve(
+                    lensed_image, psf_kernel, mode="same"
+                )
+            else:
+                source_convolved = lensed_image
+        else:
+            source_convolved = lensed_image
+
+        # Create figure
+        fig, axes = plt.subplots(1, 5, figsize=figsize)
+
+        # Panel 1: Reconstructed source
+        ax1 = axes[0]
+        im1 = ax1.imshow(
+            source_image,
+            origin="lower",
+            extent=source_extent,
+            cmap=source_cmap,
+        )
+        ax1.set_title(f"Reconstructed Source\nμ = {magnification:.2f}")
+        ax1.set_xlabel("ΔRA (arcsec)")
+        ax1.set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im1, ax=ax1, label="Flux")
+
+        # Overlay caustics if requested
+        if show_caustics:
+            try:
+                # Get lens model list from saved model
+                settings = output["settings"]
+
+                from dolphin.processor.config import ModelConfig
+                config = ModelConfig(
+                    lens_name=lens_name,
+                    file_system=self.file_system,
+                    settings=settings,
+                )
+                lens_model_list = config.get_lens_model_list()
+                lens_model = LensModel(lens_model_list=lens_model_list)
+                lens_ext = LensModelExtensions(lens_model)
+
+                delta_pix = result["source_grid_params"]["pixel_width"]
+                num_pix = result["source_grid_params"]["num_pixels_x"]
+                assert result["source_grid_params"]["num_pixels_x"] == result["source_grid_params"]["num_pixels_y"], "Non-square source grid not supported for caustics plotting."
+
+                # Compute window size: use the full extent of the source grid plus margin
+                # The grid extent is determined by ra_at_xy_0 and the grid size
+                ra_at_xy_0 = result["source_grid_params"]["ra_at_xy_0"]
+                dec_at_xy_0 = result["source_grid_params"]["dec_at_xy_0"]
+                grid_width = delta_pix * num_pix
+
+                # The source grid corners are at:
+                # (ra_at_xy_0, dec_at_xy_0) to (ra_at_xy_0 + grid_width, dec_at_xy_0 + grid_width)
+                # compute_window defines the search region size (full extent, not half-width)
+                # We want to cover the entire source grid plus margin
+                import numpy as np
+
+                # For a square grid, the diagonal is sqrt(2) * side_length
+                diagonal_extent = np.sqrt(2) * grid_width
+                compute_window = diagonal_extent * 1.5  # Add 50% margin for safety
+
+                # Use finer grid scale for smoother caustics (5x finer than source pixels)
+                caustic_grid_scale = delta_pix / 5.0
+
+                _, _, ra_caustic, dec_caustic = lens_ext.critical_curve_caustics(
+                    kwargs_lens,
+                    compute_window=compute_window,
+                    grid_scale=caustic_grid_scale,
+                )
+                for ra_c, dec_c in zip(ra_caustic, dec_caustic):
+                    ax1.plot(ra_c, dec_c, "c-", linewidth=1.5, alpha=0.8)
+            except Exception as e:
+                print(f"Warning: Could not plot caustics: {e}")
+
+        # Panel 2: Lensed source (unconvolved)
+        ax2 = axes[1]
+        # Use symmetric color scale to avoid clipping
+        vmax_lensed = np.nanmax(np.abs(lensed_image))
+        im2 = ax2.imshow(
+            lensed_image,
+            origin="lower",
+            extent=image_extent,
+            cmap=source_cmap,
+            vmin=0,
+            vmax=vmax_lensed,
+        )
+        ax2.set_title("Lensed Source\n(unconvolved)")
+        ax2.set_xlabel("ΔRA (arcsec)")
+        ax2.set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im2, ax=ax2, label="Flux")
+
+        # Panel 3: Lensed source convolved
+        ax3 = axes[2]
+        vmax_conv = np.nanmax(np.abs(source_convolved))
+        im3 = ax3.imshow(
+            source_convolved,
+            origin="lower",
+            extent=image_extent,
+            cmap=source_cmap,
+            vmin=0,
+            vmax=vmax_conv,
+        )
+        ax3.set_title("Lensed Source\n(PSF-convolved)")
+        ax3.set_xlabel("ΔRA (arcsec)")
+        ax3.set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im3, ax=ax3, label="Flux")
+
+        # Panel 4: Full convolved model (lens + source) - use log scale
+        ax4 = axes[3]
+        log_convolved = np.log10(np.maximum(convolved_image, 1e-10))
+        im4 = ax4.imshow(
+            log_convolved,
+            origin="lower",
+            extent=image_extent,
+            cmap=source_cmap,
+        )
+        ax4.set_title("Full Model\n(lens + source, log)")
+        ax4.set_xlabel("ΔRA (arcsec)")
+        ax4.set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im4, ax=ax4, label="log₁₀(Flux)")
+
+        # Panel 5: Normalized residuals
+        ax5 = axes[4]
+        normalized_residual = residual / background_rms
+        im5 = ax5.imshow(
+            normalized_residual,
+            origin="lower",
+            extent=image_extent,
+            cmap=residual_cmap,
+            vmin=-v_max_residual,
+            vmax=v_max_residual,
+        )
+        ax5.set_title(f"Residuals / σ\nλ = {optimal_lambda:.2e}")
+        ax5.set_xlabel("ΔRA (arcsec)")
+        ax5.set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im5, ax=ax5, label="Residual / σ")
+
+        plt.tight_layout()
+        return fig
+
+    def plot_reconstruction_comparison(
+        self,
+        lens_name,
+        model_id,
+        reconstruction_id,
+        band_index=0,
+        figsize=(12, 8),
+    ):
+        """Compare parametric source model with pixelated reconstruction.
+
+        Creates a 2x3 panel figure comparing:
+        Top row: Parametric model (source, lensed, residual)
+        Bottom row: Pixelated reconstruction (source, lensed, residual)
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param model_id: identifier for the parametric fitting
+        :type model_id: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :param band_index: band index (for multi-band data)
+        :type band_index: `int`
+        :param figsize: figure size (width, height)
+        :type figsize: `tuple`
+        :return: matplotlib figure
+        :rtype: `matplotlib.figure.Figure`
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
+
+        # Load both results
+        self.load_output(lens_name, model_id)
+        recon_result = self.load_reconstruction_output(lens_name, reconstruction_id)
+
+        # Get parametric model plot
+        model_plot, v_max = self.get_model_plot_instance(
+            lens_name,
+            model_id=model_id,
+            band_index=band_index,
+        )
+
+        # Create figure
+        fig, axes = plt.subplots(2, 3, figsize=figsize, constrained_layout=True)
+
+        # Top row: Parametric model
+        model_plot.source_plot(
+            ax=axes[0, 0],
+            deltaPix_source=0.02,
+            numPix=100,
+            v_max=None,
+        )
+        axes[0, 0].set_title("Parametric Source")
+
+        model_plot.model_plot(ax=axes[0, 1])
+        axes[0, 1].set_title("Parametric Model")
+
+        model_plot.normalized_residual_plot(ax=axes[0, 2], v_max=5, v_min=-5)
+        axes[0, 2].set_title("Parametric Residuals")
+
+        # Bottom row: Pixelated reconstruction
+        source_extent = recon_result["source_grid_extent"]
+        image_extent = recon_result["image_grid_extent"]
+        background_rms = recon_result["background_rms"]
+
+        im1 = axes[1, 0].imshow(
+            recon_result["source_image"],
+            origin="lower",
+            extent=source_extent,
+            cmap="cubehelix",
+            norm=LogNorm()
+        )
+        axes[1, 0].set_title(f"Pixelated Source\nμ = {recon_result['magnification']:.2f}")
+        plt.colorbar(im1, ax=axes[1, 0], fraction=0.046, pad=0.04)
+
+        im2 = axes[1, 1].imshow(
+            recon_result["convolved_image"],
+            origin="lower",
+            extent=image_extent,
+            cmap="cubehelix",
+            norm=LogNorm()
+        )
+        axes[1, 1].set_title("Pixelated Model")
+        plt.colorbar(im2, ax=axes[1, 1], fraction=0.046, pad=0.04)
+
+        normalized_residual = recon_result["residual"] / background_rms
+        im3 = axes[1, 2].imshow(
+            normalized_residual,
+            origin="lower",
+            extent=image_extent,
+            cmap="RdBu_r",
+            vmin=-5,
+            vmax=5,
+        )
+        axes[1, 2].set_title("Pixelated Residuals")
+        plt.colorbar(im3, ax=axes[1, 2], fraction=0.046, pad=0.04)
+
+        axes[1,0].axis('off')
+        axes[1,1].axis('off')
+        axes[1,2].axis('off')
+
+        return fig
+
+    def get_reconstruction_magnification(self, lens_name, reconstruction_id):
+        """Get the magnification from a source reconstruction.
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :return: total magnification
+        :rtype: `float`
+        """
+        result = self.load_reconstruction_output(lens_name, reconstruction_id)
+        return result["magnification"]
+
+    def get_reconstruction_summary(self, lens_name, reconstruction_id):
+        """Get a summary of reconstruction parameters and results.
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :return: summary dictionary
+        :rtype: `dict`
+        """
+        result = self.load_reconstruction_output(lens_name, reconstruction_id)
+
+        summary = {
+            "lens_name": lens_name,
+            "reconstruction_id": reconstruction_id,
+            "lens_model_id": result["lens_model_id"],
+            "band_index": result["band_index"],
+            "magnification": result["magnification"],
+            "optimal_lambda": result["optimal_lambda"],
+            "regularization_type": result["regularization_params"]["type"],
+            "source_grid_size": (
+                result["source_grid_params"]["num_pixels_x"],
+                result["source_grid_params"]["num_pixels_y"],
+            ),
+            "source_pixel_width": result["source_grid_params"]["pixel_width"],
+            "total_source_flux": result["source_image"].sum(),
+            "total_lensed_flux": result["lensed_image"].sum(),
+            "residual_rms": np.std(result["residual"]),
+            "normalized_residual_rms": np.std(result["residual"] / result["background_rms"]),
+        }
+
+        return summary
+    

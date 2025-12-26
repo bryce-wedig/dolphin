@@ -1476,3 +1476,115 @@ class ModelConfig(Config):
             return 1
         else:
             return self.settings["psf_supersampled_factor"]
+        
+    def get_pixelated_source_reconstruction_settings(self):
+        """Get pixelated source reconstruction settings from config.
+
+        Returns settings for pixelated source reconstruction if enabled,
+        or None if not configured.
+
+        :return: reconstruction settings dictionary or None
+        :rtype: `dict` or `None`
+        """
+        try:
+            recon_settings = self.settings["pixelated_source_reconstruction"]
+        except (NameError, KeyError):
+            return None
+
+        if recon_settings is None:
+            return None
+
+        # Check if enabled
+        if not recon_settings.get("enabled", True):
+            return None
+
+        return recon_settings
+
+    def get_source_pixel_grid_kwargs(self, band_index=0):
+        """Get kwargs for creating the source pixel grid.
+
+        Returns a dictionary suitable for passing to lenstronomy's PixelGrid class,
+        or None if pixelated source reconstruction is not configured.
+
+        :param band_index: band index (for multi-band data)
+        :type band_index: `int`
+        :return: source grid kwargs or None
+        :rtype: `dict` or `None`
+        """
+        recon_settings = self.get_pixelated_source_reconstruction_settings()
+
+        if recon_settings is None:
+            return None
+
+        try:
+            grid_settings = recon_settings["source_grid"]
+        except (KeyError, TypeError):
+            return None
+
+        if grid_settings is None:
+            return None
+
+        # Build kwargs dictionary
+        kwargs = {}
+
+        if "pixel_width" in grid_settings:
+            kwargs["pixel_width"] = grid_settings["pixel_width"]
+        if "num_pixels_x" in grid_settings:
+            kwargs["num_pixels_x"] = grid_settings["num_pixels_x"]
+        if "num_pixels_y" in grid_settings:
+            kwargs["num_pixels_y"] = grid_settings["num_pixels_y"]
+        if "ra_at_xy_0" in grid_settings:
+            kwargs["ra_at_xy_0"] = grid_settings["ra_at_xy_0"]
+        if "dec_at_xy_0" in grid_settings:
+            kwargs["dec_at_xy_0"] = grid_settings["dec_at_xy_0"]
+
+        return kwargs if kwargs else None
+
+    def get_regularization_kwargs(self):
+        """Get kwargs for source regularization.
+
+        Returns a dictionary with regularization settings, or None if
+        pixelated source reconstruction is not configured.
+
+        :return: regularization kwargs or None
+        :rtype: `dict` or `None`
+        """
+        recon_settings = self.get_pixelated_source_reconstruction_settings()
+
+        if recon_settings is None:
+            return None
+
+        try:
+            reg_settings = recon_settings["regularization"]
+        except (KeyError, TypeError):
+            return None
+
+        if reg_settings is None:
+            return None
+
+        # Build kwargs dictionary with defaults
+        kwargs = {
+            "type": reg_settings.get("type", "curvature"),
+            "lambda_bounds": reg_settings.get("lambda_bounds", [1e2, 1e8]),
+            "lambda_tolerance": reg_settings.get("lambda_tolerance", 1e-7),
+            "max_iterations": reg_settings.get("max_iterations", 30),
+        }
+
+        # Validate regularization type
+        valid_types = ["zeroth_order", "gradient", "curvature"]
+        if kwargs["type"] not in valid_types:
+            raise ValueError(
+                f"Invalid regularization type in config: {kwargs['type']}. "
+                f"Must be one of {valid_types}"
+            )
+
+        return kwargs
+
+    def is_pixelated_reconstruction_enabled(self):
+        """Check if pixelated source reconstruction is enabled in config.
+
+        :return: True if enabled, False otherwise
+        :rtype: `bool`
+        """
+        recon_settings = self.get_pixelated_source_reconstruction_settings()
+        return recon_settings is not None

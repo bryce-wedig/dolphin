@@ -395,6 +395,133 @@ class FileSystem(object):
 
             return output
 
+    def get_reconstruction_output_file_path(self, lens_name, reconstruction_id):
+        """Get the file path for a source reconstruction output.
+
+        :param lens_name: lens name
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction run
+        :type reconstruction_id: `str`
+        :return: file path
+        :rtype: `str`
+        """
+        return (
+            self.path2str(Path(self.get_outputs_directory()))
+            + f"/reconstruction_{lens_name}_{reconstruction_id}.h5"
+        )
+
+
+    def save_reconstruction_output(self, lens_name, reconstruction_id, result):
+        """Save source reconstruction output to HDF5 file.
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for reconstruction run
+        :type reconstruction_id: `str`
+        :param result: reconstruction result dictionary
+        :type result: `dict`
+        """
+        save_file = self.get_reconstruction_output_file_path(lens_name, reconstruction_id)
+
+        with h5py.File(save_file, "w") as f:
+            # Store metadata as JSON attributes
+            f.attrs["lens_model_id"] = result.get("lens_model_id", "")
+            f.attrs["band_index"] = result.get("band_index", 0)
+            f.attrs["optimal_lambda"] = result.get("optimal_lambda", 0.0)
+            f.attrs["magnification"] = result.get("magnification", 0.0)
+            f.attrs["background_rms"] = result.get("background_rms", 0.0)
+
+            # Store source grid and regularization params as JSON
+            f.attrs["source_grid_params"] = json.dumps(
+                self.encode_numpy_arrays(result.get("source_grid_params", {}))
+            )
+            f.attrs["regularization_params"] = json.dumps(
+                self.encode_numpy_arrays(result.get("regularization_params", {}))
+            )
+            f.attrs["kwargs_lens"] = json.dumps(
+                self.encode_numpy_arrays(result.get("kwargs_lens", []))
+            )
+
+            # Store grid extents
+            f.attrs["source_grid_extent"] = json.dumps(
+                result.get("source_grid_extent", [])
+            )
+            f.attrs["image_grid_extent"] = json.dumps(
+                result.get("image_grid_extent", [])
+            )
+
+            # Store arrays as datasets
+            f.create_dataset(
+                "source_pixel_values",
+                data=result.get("source_pixel_values", np.array([])),
+            )
+            f.create_dataset(
+                "source_image", data=result.get("source_image", np.array([]))
+            )
+            f.create_dataset(
+                "lensed_image", data=result.get("lensed_image", np.array([]))
+            )
+            f.create_dataset(
+                "convolved_image", data=result.get("convolved_image", np.array([]))
+            )
+            f.create_dataset("residual", data=result.get("residual", np.array([])))
+
+            # Optionally store large matrices (can be disabled for space)
+            if result.get("M_matrix") is not None:
+                f.create_dataset("M_matrix", data=result["M_matrix"], compression="gzip")
+            if result.get("b_vector") is not None:
+                f.create_dataset("b_vector", data=result["b_vector"])
+            if result.get("U_matrix") is not None:
+                f.create_dataset("U_matrix", data=result["U_matrix"], compression="gzip")
+
+
+    def load_reconstruction_output(self, lens_name, reconstruction_id):
+        """Load source reconstruction output from HDF5 file.
+
+        :param lens_name: lens name
+        :type lens_name: `str`
+        :param reconstruction_id: identifier for the reconstruction
+        :type reconstruction_id: `str`
+        :return: reconstruction result dictionary
+        :rtype: `dict`
+        """
+        load_file = self.get_reconstruction_output_file_path(lens_name, reconstruction_id)
+
+        with h5py.File(load_file, "r") as f:
+            result = {
+                "lens_model_id": str(f.attrs["lens_model_id"]),
+                "band_index": int(f.attrs["band_index"]),
+                "optimal_lambda": float(f.attrs["optimal_lambda"]),
+                "magnification": float(f.attrs["magnification"]),
+                "background_rms": float(f.attrs["background_rms"]),
+                "source_grid_params": self.decode_numpy_arrays(
+                    json.loads(str(f.attrs["source_grid_params"]))
+                ),
+                "regularization_params": self.decode_numpy_arrays(
+                    json.loads(str(f.attrs["regularization_params"]))
+                ),
+                "kwargs_lens": self.decode_numpy_arrays(
+                    json.loads(str(f.attrs["kwargs_lens"]))
+                ),
+                "source_grid_extent": json.loads(str(f.attrs["source_grid_extent"])),
+                "image_grid_extent": json.loads(str(f.attrs["image_grid_extent"])),
+                "source_pixel_values": f["source_pixel_values"][:],
+                "source_image": f["source_image"][:],
+                "lensed_image": f["lensed_image"][:],
+                "convolved_image": f["convolved_image"][:],
+                "residual": f["residual"][:],
+            }
+
+            # Load optional large matrices if present
+            if "M_matrix" in f:
+                result["M_matrix"] = f["M_matrix"][:]
+            if "b_vector" in f:
+                result["b_vector"] = f["b_vector"][:]
+            if "U_matrix" in f:
+                result["U_matrix"] = f["U_matrix"][:]
+
+        return result
+
     @classmethod
     def encode_numpy_arrays(cls, obj):
         """Encode a list/dictionary containing numpy arrays through recursion for JSON
