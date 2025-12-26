@@ -1122,7 +1122,7 @@ class Output(Processor):
         ax1.set_title(f"Reconstructed Source\nμ = {magnification:.2f}")
         ax1.set_xlabel("ΔRA (arcsec)")
         ax1.set_ylabel("ΔDec (arcsec)")
-        plt.colorbar(im1, ax=ax1, label="Flux")
+        plt.colorbar(im1, ax=ax1, label="Flux", fraction=0.046, pad=0.04)
 
         # Overlay caustics if requested
         if show_caustics:
@@ -1188,7 +1188,7 @@ class Output(Processor):
         ax2.set_title("Lensed Source\n(unconvolved)")
         ax2.set_xlabel("ΔRA (arcsec)")
         ax2.set_ylabel("ΔDec (arcsec)")
-        plt.colorbar(im2, ax=ax2, label="Flux")
+        plt.colorbar(im2, ax=ax2, label="Flux", fraction=0.046, pad=0.04)
 
         # Panel 3: Lensed source convolved
         ax3 = axes[2]
@@ -1204,7 +1204,7 @@ class Output(Processor):
         ax3.set_title("Lensed Source\n(PSF-convolved)")
         ax3.set_xlabel("ΔRA (arcsec)")
         ax3.set_ylabel("ΔDec (arcsec)")
-        plt.colorbar(im3, ax=ax3, label="Flux")
+        plt.colorbar(im3, ax=ax3, label="Flux", fraction=0.046, pad=0.04)
 
         # Panel 4: Full convolved model (lens + source) - use log scale
         ax4 = axes[3]
@@ -1218,7 +1218,7 @@ class Output(Processor):
         ax4.set_title("Full Model\n(lens + source, log)")
         ax4.set_xlabel("ΔRA (arcsec)")
         ax4.set_ylabel("ΔDec (arcsec)")
-        plt.colorbar(im4, ax=ax4, label="log₁₀(Flux)")
+        plt.colorbar(im4, ax=ax4, label="log₁₀(Flux)", fraction=0.046, pad=0.04)
 
         # Panel 5: Normalized residuals
         ax5 = axes[4]
@@ -1234,7 +1234,7 @@ class Output(Processor):
         ax5.set_title(f"Residuals / σ\nλ = {optimal_lambda:.2e}")
         ax5.set_xlabel("ΔRA (arcsec)")
         ax5.set_ylabel("ΔDec (arcsec)")
-        plt.colorbar(im5, ax=ax5, label="Residual / σ")
+        plt.colorbar(im5, ax=ax5, label="Residual / σ", fraction=0.046, pad=0.04)
 
         plt.tight_layout()
         return fig
@@ -1245,7 +1245,10 @@ class Output(Processor):
         model_id,
         reconstruction_id,
         band_index=0,
-        figsize=(12, 8),
+        figsize=(16, 8),
+        data_cmap="cubehelix",
+        residual_cmap="RdBu_r",
+        v_max_residual=5,
     ):
         """Compare parametric source model with pixelated reconstruction.
 
@@ -1263,11 +1266,16 @@ class Output(Processor):
         :type band_index: `int`
         :param figsize: figure size (width, height)
         :type figsize: `tuple`
+        :param data_cmap: colormap for image and source plots
+        :type data_cmap: `str`
+        :param residual_cmap: colormap for residual plots
+        :type residual_cmap: `str`
+        :param v_max_residual: maximum value for residual colorbar (in sigma)
+        :type v_max_residual: `float`
         :return: matplotlib figure
         :rtype: `matplotlib.figure.Figure`
         """
         import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
 
         # Load both results
         self.load_output(lens_name, model_id)
@@ -1278,66 +1286,83 @@ class Output(Processor):
             lens_name,
             model_id=model_id,
             band_index=band_index,
+            data_cmap=data_cmap,
         )
 
         # Create figure
-        fig, axes = plt.subplots(2, 3, figsize=figsize, constrained_layout=True)
+        fig, axes = plt.subplots(2, 3, figsize=figsize)
 
         # Top row: Parametric model
         model_plot.source_plot(
             ax=axes[0, 0],
             deltaPix_source=0.02,
             numPix=100,
-            v_max=None,
+            band_index=band_index,
         )
-        axes[0, 0].set_title("Parametric Source")
+        axes[0, 0].set_title("Parametric Source", fontsize=12, pad=10)
 
-        model_plot.model_plot(ax=axes[0, 1])
-        axes[0, 1].set_title("Parametric Model")
+        model_plot.model_plot(ax=axes[0, 1], band_index=band_index, v_max=v_max)
+        axes[0, 1].set_title("Parametric Model", fontsize=12, pad=10)
 
-        model_plot.normalized_residual_plot(ax=axes[0, 2], v_max=5, v_min=-5)
-        axes[0, 2].set_title("Parametric Residuals")
+        model_plot.normalized_residual_plot(
+            ax=axes[0, 2],
+            band_index=band_index,
+            cmap=residual_cmap,
+            v_max=v_max_residual,
+            v_min=-v_max_residual
+        )
+        axes[0, 2].set_title("Parametric Residuals", fontsize=12, pad=10)
 
         # Bottom row: Pixelated reconstruction
         source_extent = recon_result["source_grid_extent"]
         image_extent = recon_result["image_grid_extent"]
         background_rms = recon_result["background_rms"]
 
+        # Source plot
         im1 = axes[1, 0].imshow(
             recon_result["source_image"],
             origin="lower",
             extent=source_extent,
-            cmap="cubehelix",
-            norm=LogNorm()
+            cmap=data_cmap,
         )
-        axes[1, 0].set_title(f"Pixelated Source\nμ = {recon_result['magnification']:.2f}")
-        plt.colorbar(im1, ax=axes[1, 0], fraction=0.046, pad=0.04)
+        axes[1, 0].set_title(
+            f"Pixelated Source\nμ = {recon_result['magnification']:.2f}",
+            fontsize=12,
+            pad=10
+        )
+        axes[1, 0].set_xlabel("ΔRA (arcsec)")
+        axes[1, 0].set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im1, ax=axes[1, 0], label="Flux", fraction=0.046, pad=0.04)
 
+        # Model plot - use log scale to match parametric
+        log_convolved = np.log10(np.maximum(recon_result["convolved_image"], 1e-10))
         im2 = axes[1, 1].imshow(
-            recon_result["convolved_image"],
+            log_convolved,
             origin="lower",
             extent=image_extent,
-            cmap="cubehelix",
-            norm=LogNorm()
+            cmap=data_cmap,
         )
-        axes[1, 1].set_title("Pixelated Model")
-        plt.colorbar(im2, ax=axes[1, 1], fraction=0.046, pad=0.04)
+        axes[1, 1].set_title("Pixelated Model", fontsize=12, pad=10)
+        axes[1, 1].set_xlabel("ΔRA (arcsec)")
+        axes[1, 1].set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im2, ax=axes[1, 1], label="log₁₀(Flux)", fraction=0.046, pad=0.04)
 
+        # Residuals plot
         normalized_residual = recon_result["residual"] / background_rms
         im3 = axes[1, 2].imshow(
             normalized_residual,
             origin="lower",
             extent=image_extent,
-            cmap="RdBu_r",
-            vmin=-5,
-            vmax=5,
+            cmap=residual_cmap,
+            vmin=-v_max_residual,
+            vmax=v_max_residual,
         )
-        axes[1, 2].set_title("Pixelated Residuals")
-        plt.colorbar(im3, ax=axes[1, 2], fraction=0.046, pad=0.04)
+        axes[1, 2].set_title("Pixelated Residuals", fontsize=12, pad=10)
+        axes[1, 2].set_xlabel("ΔRA (arcsec)")
+        axes[1, 2].set_ylabel("ΔDec (arcsec)")
+        plt.colorbar(im3, ax=axes[1, 2], label="Residual / σ", fraction=0.046, pad=0.04)
 
-        axes[1,0].axis('off')
-        axes[1,1].axis('off')
-        axes[1,2].axis('off')
+        plt.subplots_adjust(left=0.05, right=0.98, top=0.95, bottom=0.08, wspace=0.35, hspace=0.25)
 
         return fig
 

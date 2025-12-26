@@ -113,6 +113,10 @@ class Processor(object):
         band_index=0,
         source_grid_kwargs=None,
         regularization_kwargs=None,
+        use_source_mask=False,
+        source_mask_type="snr",
+        source_mask_threshold=0.5,
+        source_mask_sigma=2.0,
         save_output=True,
         verbose=True,
         show_progress=True,
@@ -144,6 +148,14 @@ class Processor(object):
             Keys can include: 'type' ('zeroth_order', 'gradient', 'curvature'),
             'lambda_bounds' ([lower, upper]), 'lambda_tolerance'
         :type regularization_kwargs: `dict` or `None`
+        :param use_source_mask: if True, apply smoothing mask to source
+        :type use_source_mask: `bool`
+        :param source_mask_type: type of mask ('snr' or 'caustic')
+        :type source_mask_type: `str`
+        :param source_mask_threshold: threshold for S/N masking (fraction of peak)
+        :type source_mask_threshold: `float`
+        :param source_mask_sigma: Gaussian smoothing sigma for soft mask (pixels)
+        :type source_mask_sigma: `float`
         :param save_output: if True, save reconstruction results to file
         :type save_output: `bool`
         :param verbose: if True, print progress messages
@@ -173,6 +185,10 @@ class Processor(object):
             band_index=band_index,
             source_grid_kwargs=source_grid_kwargs,
             regularization_kwargs=regularization_kwargs,
+            use_source_mask=use_source_mask,
+            source_mask_type=source_mask_type,
+            source_mask_threshold=source_mask_threshold,
+            source_mask_sigma=source_mask_sigma,
             verbose=verbose,
             show_progress=show_progress,
         )
