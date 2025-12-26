@@ -75,6 +75,7 @@ class TestPixelatedSourceReconstructor:
     def test_get_source_grid_params_defaults(self):
         """Test that default source grid parameters are computed correctly."""
         from dolphin.analysis.source_reconstruction import PixelatedSourceReconstructor
+        from dolphin.processor.config import ModelConfig
 
         # Create instance with mocked file system
         with patch(
@@ -85,9 +86,14 @@ class TestPixelatedSourceReconstructor:
 
             reconstructor = PixelatedSourceReconstructor("/fake/path")
 
+            # Create a mock config with pixel_size property
+            mock_config = Mock(spec=ModelConfig)
+            mock_config.settings = self.mock_output["settings"]
+            mock_config.pixel_size = [0.04]  # Match the transform matrix in mock_output
+
             # Test default parameter generation
             params = reconstructor._get_source_grid_params(
-                self.mock_output["settings"],
+                mock_config,
                 None,
                 self.mock_output["multi_band_list_out"],
                 0,
@@ -106,6 +112,7 @@ class TestPixelatedSourceReconstructor:
     def test_get_source_grid_params_from_config(self):
         """Test source grid params loaded from config override defaults."""
         from dolphin.analysis.source_reconstruction import PixelatedSourceReconstructor
+        from dolphin.processor.config import ModelConfig
 
         settings = deepcopy(self.mock_output["settings"])
         settings["pixelated_source_reconstruction"] = {
@@ -127,8 +134,13 @@ class TestPixelatedSourceReconstructor:
 
             reconstructor = PixelatedSourceReconstructor("/fake/path")
 
+            # Create a mock config with pixel_size property
+            mock_config = Mock(spec=ModelConfig)
+            mock_config.settings = settings
+            mock_config.pixel_size = [0.04]
+
             params = reconstructor._get_source_grid_params(
-                settings,
+                mock_config,
                 None,
                 self.mock_output["multi_band_list_out"],
                 0,
@@ -143,6 +155,7 @@ class TestPixelatedSourceReconstructor:
     def test_get_source_grid_params_kwargs_override(self):
         """Test that kwargs override both defaults and config."""
         from dolphin.analysis.source_reconstruction import PixelatedSourceReconstructor
+        from dolphin.processor.config import ModelConfig
 
         settings = deepcopy(self.mock_output["settings"])
         settings["pixelated_source_reconstruction"] = {
@@ -159,8 +172,13 @@ class TestPixelatedSourceReconstructor:
 
             reconstructor = PixelatedSourceReconstructor("/fake/path")
 
+            # Create a mock config with pixel_size property
+            mock_config = Mock(spec=ModelConfig)
+            mock_config.settings = settings
+            mock_config.pixel_size = [0.04]
+
             params = reconstructor._get_source_grid_params(
-                settings,
+                mock_config,
                 override_kwargs,
                 self.mock_output["multi_band_list_out"],
                 0,
@@ -168,6 +186,68 @@ class TestPixelatedSourceReconstructor:
 
             assert params["pixel_width"] == 0.03
             assert params["num_pixels_x"] == 100
+
+    def test_get_source_grid_params_uses_band_index(self):
+        """Test that pixel size is read from config using band_index."""
+        from dolphin.analysis.source_reconstruction import PixelatedSourceReconstructor
+        from dolphin.processor.config import ModelConfig
+
+        # Create multi-band mock output
+        multi_band_list_out = [
+            [
+                {
+                    "image_data": np.random.randn(50, 50) * 0.01,
+                    "background_rms": 0.01,
+                    "ra_at_xy_0": -1.0,
+                    "dec_at_xy_0": -1.0,
+                    "transform_pix2angle": np.array([[0.04, 0], [0, 0.04]]),
+                },
+                {"psf_type": "PIXEL", "kernel_point_source": np.ones((5, 5)) / 25},
+                {},
+            ],
+            [
+                {
+                    "image_data": np.random.randn(50, 50) * 0.01,
+                    "background_rms": 0.01,
+                    "ra_at_xy_0": -1.0,
+                    "dec_at_xy_0": -1.0,
+                    "transform_pix2angle": np.array([[0.08, 0], [0, 0.08]]),
+                },
+                {"psf_type": "PIXEL", "kernel_point_source": np.ones((5, 5)) / 25},
+                {},
+            ],
+        ]
+
+        with patch(
+            "dolphin.analysis.source_reconstruction.FileSystem"
+        ) as mock_fs_class:
+            mock_fs = Mock()
+            mock_fs_class.return_value = mock_fs
+
+            reconstructor = PixelatedSourceReconstructor("/fake/path")
+
+            # Create a mock config with multiple pixel sizes
+            mock_config = Mock(spec=ModelConfig)
+            mock_config.settings = self.mock_output["settings"]
+            mock_config.pixel_size = [0.04, 0.08]
+
+            # Test band_index=0 uses pixel_size[0]
+            params_band0 = reconstructor._get_source_grid_params(
+                mock_config,
+                None,
+                multi_band_list_out,
+                0,
+            )
+            assert params_band0["pixel_width"] == 0.04 * 2  # 2x coarser than image
+
+            # Test band_index=1 uses pixel_size[1]
+            params_band1 = reconstructor._get_source_grid_params(
+                mock_config,
+                None,
+                multi_band_list_out,
+                1,
+            )
+            assert params_band1["pixel_width"] == 0.08 * 2  # 2x coarser than image
 
     def test_get_regularization_params_defaults(self):
         """Test default regularization parameters."""
