@@ -155,7 +155,13 @@ class PixelatedSourceReconstructor:
         data_class = ImageData(**kwargs_data)
         psf_class = PSF(**kwargs_psf)
 
-        lens_model_list = config.get_lens_model_list()
+        # Get lens model list and convert SIE to EPL (same as done in get_kwargs_model)
+        # This ensures consistency between the model used in fitting and reconstruction
+        lens_model_list = deepcopy(config.get_lens_model_list())
+        if "SIE" in lens_model_list:
+            index = lens_model_list.index("SIE")
+            lens_model_list[index] = "EPL"
+
         lens_model_class = LensModel(lens_model_list=lens_model_list)
 
         # Create source pixel grid
@@ -454,10 +460,77 @@ class PixelatedSourceReconstructor:
             )
         except Exception as e:
             # If optimization fails, use geometric mean of bounds
-            print(f"Warning: Lambda optimization failed ({e}). Using default.")
+            import sys
+            sys.stderr.write(f"Warning: Lambda optimization failed ({e}). Using default.\n")
+            sys.stderr.flush()
             optimal_lambda = np.sqrt(bounds[0] * bounds[1])
 
         return optimal_lambda
+
+    def _fix_mge_amp_parameters(self, kwargs_lens_light, lens_light_model_list, config):
+        """Fix MGE amp parameters that were incorrectly decoded as scalars.
+
+        When MGE_MULTI_SET or MGE_MULTI_SET_POINT models have amp parameters
+        saved/loaded via JSON, they may be incorrectly converted from arrays
+        to scalars. This method ensures they are arrays with the correct size.
+
+        :param kwargs_lens_light: lens light parameters
+        :type kwargs_lens_light: `list` of `dict`
+        :param lens_light_model_list: list of lens light model names
+        :type lens_light_model_list: `list` of `str`
+        :param config: ModelConfig instance to get MGE configuration
+        :type config: `ModelConfig`
+        :return: corrected lens light parameters
+        :rtype: `list` of `dict`
+        """
+        kwargs_lens_light_fixed = deepcopy(kwargs_lens_light)
+
+        # Get MGE profile configurations
+        mge_configs = config.get_lens_light_mge_profile_kwargs()
+
+        for i, model in enumerate(lens_light_model_list):
+            if model in ["MGE_MULTI_SET", "MGE_MULTI_SET_POINT"]:
+                if i < len(kwargs_lens_light_fixed):
+                    if "amp" in kwargs_lens_light_fixed[i]:
+                        amp = kwargs_lens_light_fixed[i]["amp"]
+
+                        # Determine expected array size from MGE configuration
+                        if model == "MGE_MULTI_SET":
+                            n_sets = mge_configs[i].get("n_sets", 2)
+                            n_gaussians_per_set = mge_configs[i].get("n_gaussians_per_set", 30)
+                            expected_size = n_sets * n_gaussians_per_set
+                        else:  # MGE_MULTI_SET_POINT
+                            expected_size = mge_configs[i].get("n_gaussians", 10)
+
+                        # Convert scalar to array if needed
+                        if not isinstance(amp, (list, np.ndarray)):
+                            # Single scalar value - create array of zeros with correct size
+                            # This happens when amp was stored as a scalar during serialization
+                            kwargs_lens_light_fixed[i]["amp"] = np.zeros(expected_size)
+                        elif isinstance(amp, list):
+                            # List - convert to numpy array
+                            amp_array = np.array(amp)
+                            # Check if size matches expectation
+                            if len(amp_array) != expected_size:
+                                # Resize array if needed
+                                if len(amp_array) == 1:
+                                    # Single value - probably a serialization error
+                                    kwargs_lens_light_fixed[i]["amp"] = np.zeros(expected_size)
+                                else:
+                                    # Unexpected size - keep as is but warn
+                                    kwargs_lens_light_fixed[i]["amp"] = amp_array
+                            else:
+                                kwargs_lens_light_fixed[i]["amp"] = amp_array
+                        elif isinstance(amp, np.ndarray):
+                            # Check if size matches expectation
+                            if len(amp) != expected_size:
+                                if len(amp) == 1:
+                                    # Single value array - probably a serialization error
+                                    kwargs_lens_light_fixed[i]["amp"] = np.zeros(expected_size)
+                                # else: keep as is
+                        # If already correct numpy array, no change needed
+
+        return kwargs_lens_light_fixed
 
     def _render_lens_light(
         self, config, kwargs_result, multi_band_list_out, band_index, verbose
@@ -497,6 +570,11 @@ class PixelatedSourceReconstructor:
             kwargs_data = band_data[0]
             data_class = ImageData(**kwargs_data)
             return np.zeros_like(data_class.data)
+
+        # Fix MGE_MULTI_SET amp parameters if they were incorrectly decoded as scalars
+        kwargs_lens_light = self._fix_mge_amp_parameters(
+            kwargs_lens_light, lens_light_model_list, config
+        )
 
         if verbose:
             print("  Rendering lens light component...")
