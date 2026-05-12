@@ -1,4 +1,3 @@
----
 lens_name: lens_system_wsat
 
 band: [F475X, F600LP]
@@ -33,14 +32,13 @@ lens_light_option:
     0:
       n_sersic: 4.0
   gaussian_prior:
-    0: 
-      [[R_sersic, 0.21, 0.15]]
+    0: [[R_sersic, 0.21, 0.15]]
 
 source_light_option:
   gaussian_prior:
     0: [[beta, 0.15, 0.05]]
   shapelet_scale_logarithmic_prior: true
-    # If true, provide logarithmic_prior on the source light profile
+    # if true, provide logarithmic_prior on the source light profile
     # beta parameter
   n_max: [2, 4] # list to specify n_max for each band
 
@@ -49,7 +47,7 @@ fitting:
   pso_settings:
     num_iteration: 10
     num_particle: 10
-  
+
   sampling: true
   sampler: emcee
   sampler_settings: # keywords to be sent to FittingSequence.mcmc() or FittingSequence.nested_sampling()

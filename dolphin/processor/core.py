@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
-"""This module loads settings from a configuration file."""
+"""This module handles the execution of modeling sequences for lens systems."""
 
 __author__ = "ajshajib"
 
 import sys
+from lenstronomy import __version__ as _lenstronomy_version
+from .. import __version__
+
 from lenstronomy.Workflow.fitting_sequence import FittingSequence
 from schwimmbad import choose_pool
+import numpy as np
 
 from .files import FileSystem
 from .config import ModelConfig
@@ -15,14 +19,13 @@ from .recipe import Recipe
 
 
 class Processor(object):
-    """This class contains methods to model a single lens system or a bunch of systems
-    from the config files."""
+    """This class contains methods to model a single lens system or a batch of systems
+    using settings loaded from configuration files."""
 
     def __init__(self, io_directory):
-        """
+        """Initialize the Processor with the base I/O directory.
 
-        :param io_directory: path to the input/output directory. Should not
-            end with slash.
+        :param io_directory: path to the input/output directory. Should not end with a slash.
         :type io_directory: `str`
         """
         self.io_directory = io_directory
@@ -37,27 +40,31 @@ class Processor(object):
         mpi=False,
         recipe_name="galaxy-quasar",
         thread_count=1,
+        custom_logL_addition=None,
+        use_jax=False,
     ):
-        """Run models for a single lens.
+        """Run lens modeling optimizations for a single lens system.
 
-        :param lens_name: lens name
+        :param lens_name: name of the lens system to model
         :type lens_name: `str`
-        :param model_id: identifier for the model run
+        :param model_id: identifier for this specific model run
         :type model_id: `str`
-        :param log: if `True`, all `print` statements will be logged. This should be `False` if running in a notebook.
+        :param log: if `True`, standard output is logged to a file. Set to `False` in notebooks.
         :type log: `bool`
-        :param mpi: MPI option
+        :param mpi: enable MPI for parallel processing
         :type mpi: `bool`
-        :param recipe_name: recipe for pre-sampling optimization, supported
-            ones now: 'galaxy-quasar' and 'galaxy-galaxy'
+        :param recipe_name: recipe for pre-sampling optimization. Supported: 'galaxy-quasar', 'galaxy-galaxy', 'skip'. 'skip' will skip pre-sampling optimization and directly sample the full model. See `Recipe` class for details.
         :type recipe_name: `str`
-        :param sampler: 'EMCEE' or 'COSMOHAMMER', cosmohammer is kept for
-            legacy
-        :type sampler: `str`
-        :param thread_count: number of threads if `multiprocess` is used
+        :param thread_count: number of threads to use if multiprocess is enabled
         :type thread_count: `int`
-        :return:
-        :rtype:
+        :param custom_logL_addition: a callable function that takes in the optional arguments kwargs_lens,
+            kwargs_source, kwargs_lens_light, kwargs_ps, kwargs_special, kwargs_extinction, kwargs_tracer_source
+            and outputs a float. If use_jax is also True, this function must be compatible with jax.jit
+        :type custom_logL_addition: callable function
+        :param use_jax: if `True`, performs modeling through JAXtronomy instead of lenstronomy
+        :type use_jax: `bool`
+        :return: None
+        :rtype: `None`
         """
         pool = choose_pool(mpi=mpi)
 
@@ -75,11 +82,22 @@ class Processor(object):
             lens_name, psf_supersampled_factor=psf_supersampling_factor
         )
 
-        fitting_sequence = FittingSequence(
+        if use_jax:
+            from jaxtronomy.Workflow.fitting_sequence import (
+                FittingSequence as FittingSequenceJAX,
+            )
+
+            FittingSequenceClass = FittingSequenceJAX
+        else:
+            FittingSequenceClass = FittingSequence
+
+        fitting_sequence = FittingSequenceClass(
             kwargs_data_joint,
             config.get_kwargs_model(),
-            config.get_kwargs_constraints(),
-            config.get_kwargs_likelihood(),
+            config.get_kwargs_constraints(use_jax=use_jax),
+            config.get_kwargs_likelihood(
+                custom_logL_addition=custom_logL_addition, use_jax=use_jax
+            ),
             config.get_kwargs_params(),
             mpi=mpi,
         )
@@ -98,7 +116,14 @@ class Processor(object):
             "kwargs_result": kwargs_result,
             "fit_output": fit_output,
             "multi_band_list_out": multi_band_list_out,
+            "dolphin_version": __version__,
+            "lenstronomy_version": _lenstronomy_version,
         }
+
+        if use_jax:
+            import jaxtronomy
+
+            output["jaxtronomy_version"] = jaxtronomy.__version__
 
         if pool.is_master():
             self.file_system.save_output(lens_name, model_id, output)
@@ -107,24 +132,25 @@ class Processor(object):
             log_file.close()
 
     def get_lens_config(self, lens_name):
-        """Get the `ModelConfig` object for a lens.
+        """Get the `ModelConfig` object populated with settings for a specific lens.
 
-        :param lens_name: lens name
+        :param lens_name: name of the lens system
         :type lens_name: `str`
-        :return: `ModelConfig` instance
-        :rtype:
+        :return: instance of `ModelConfig` containing the lens configurations
+        :rtype: `ModelConfig`
         """
         return ModelConfig(lens_name, file_system=self.file_system)
 
     def get_kwargs_data_joint(self, lens_name, psf_supersampled_factor=1):
-        """Create `kwargs_data` for a lens and given filters.
+        """Create a joint `kwargs_data` dictionary combining data and PSFs across
+        filters.
 
-        :param lens_name: lens name
+        :param lens_name: name of the lens system
         :type lens_name: `str`
-        :param psf_supersampled_factor: Supersampled factor of given PSF.
-        :rtype psf_supersampled_factor: `float`
-        :return:
-        :rtype:
+        :param psf_supersampled_factor: supersampling factor applied to the PSF
+        :type psf_supersampled_factor: `int`
+        :return: joint kwargs data mapping suitable for `lenstronomy`
+        :rtype: `dict`
         """
         config = self.get_lens_config(lens_name)
 
@@ -151,28 +177,47 @@ class Processor(object):
             "multi_band_type": "multi-linear",
         }
 
+        model = config.settings.get("model", {})
+        point_source_option = config.settings.get("point_source_option", {})
+
+        if (
+            "point_source" in model
+            and "time_delays_measured" in point_source_option
+            and "time_delays_covariance" in point_source_option
+        ):
+            kwargs_data_joint.update(
+                {
+                    "time_delays_measured": np.array(
+                        config.settings["point_source_option"]["time_delays_measured"]
+                    ),
+                    "time_delays_uncertainties": np.array(
+                        config.settings["point_source_option"]["time_delays_covariance"]
+                    ),
+                }
+            )
+
         return kwargs_data_joint
 
     def get_image_data(self, lens_name, band):
-        """Get the `ImageData` instance.
+        """Get the `ImageData` instance for a given lens and observing band.
 
-        :param lens_name: name of the lens
+        :param lens_name: name of the lens system
         :type lens_name: `str`
-        :param band: image band/filter
+        :param band: observing band or filter name
         :type band: `str`
-        :return: `ImageData` instance
-        :rtype:
+        :return: loaded image data object
+        :rtype: `ImageData`
         """
         return ImageData(self.file_system.get_image_file_path(lens_name, band))
 
     def get_psf_data(self, lens_name, band):
-        """Get the `PSFData` instance.
+        """Get the `PSFData` instance for a given lens and observing band.
 
-        :param lens_name: lens name
+        :param lens_name: name of the lens system
         :type lens_name: `str`
-        :param band: image band/filter
+        :param band: observing band or filter name
         :type band: `str`
-        :return: `PSFData` instance
-        :rtype:
+        :return: loaded PSF data object
+        :rtype: `PSFData`
         """
         return PSFData(self.file_system.get_psf_file_path(lens_name, band))
