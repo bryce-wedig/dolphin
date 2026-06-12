@@ -13,7 +13,18 @@ import lenstronomy.Util.mask_util as mask_util
 import os
 
 from astropy import units as u
-from astropy.cosmology import FlatLambdaCDM
+from astropy.cosmology import (
+    FlatLambdaCDM,
+    LambdaCDM,
+    FlatwCDM,
+    wCDM,
+    Flatw0waCDM,
+    w0waCDM,
+    w0wzCDM,
+    Flatw0wzCDM,
+    wpwaCDM,
+    FlatwpwaCDM,
+)
 from lenstronomy.Cosmo.lens_cosmo import LensCosmo
 
 from .data import ImageData
@@ -85,6 +96,26 @@ class ModelConfig(Config):
 
         assert self.settings["lens_name"] == self._lens_name
 
+        # Backward compatibility for singular option names
+        for opt in [
+            "lens",
+            "lens_light",
+            "source_light",
+            "point_source",
+            "numeric",
+            "model",
+            "likelihood",
+            "special",
+        ]:
+            if (
+                f"{opt}_option" in self.settings
+                and f"{opt}_options" not in self.settings
+            ):
+                self.settings[f"{opt}_options"] = deepcopy(
+                    self.settings[f"{opt}_option"]
+                )
+                del self.settings[f"{opt}_option"]
+
     @property
     def lens_name(self):
         """The name of the lens system.
@@ -135,10 +166,10 @@ class ModelConfig(Config):
         :rtype: `float`
         """
         if (
-            "lens_option" in self.settings
-            and "centroid_init" in self.settings["lens_option"]
+            "lens_options" in self.settings
+            and "centroid_init" in self.settings["lens_options"]
         ):
-            return float(self.settings["lens_option"]["centroid_init"][0])
+            return float(self.settings["lens_options"]["centroid_init"][0])
         else:
             return 0.0
 
@@ -151,10 +182,10 @@ class ModelConfig(Config):
         :rtype: `float`
         """
         if (
-            "lens_option" in self.settings
-            and "centroid_init" in self.settings["lens_option"]
+            "lens_options" in self.settings
+            and "centroid_init" in self.settings["lens_options"]
         ):
-            return float(self.settings["lens_option"]["centroid_init"][1])
+            return float(self.settings["lens_options"]["centroid_init"][1])
         else:
             return 0.0
 
@@ -166,9 +197,9 @@ class ModelConfig(Config):
         :return: the centroid bound in arcseconds
         :rtype: `float`
         """
-        if "lens_option" in self.settings:
-            if "centroid_bound" in self.settings["lens_option"]:
-                bound = self.settings["lens_option"]["centroid_bound"]
+        if "lens_options" in self.settings:
+            if "centroid_bound" in self.settings["lens_options"]:
+                bound = self.settings["lens_options"]["centroid_bound"]
                 if bound is not None:
                     return bound
 
@@ -194,7 +225,7 @@ class ModelConfig(Config):
         default_n_comp = 20
 
         try:
-            mge_config = self.settings["lens_light_option"]["mge_config"]
+            mge_config = self.settings["lens_light_options"]["mge_config"]
             if config_index in mge_config:
                 return mge_config[config_index].get("n_comp", default_n_comp)
             elif str(config_index) in mge_config:
@@ -240,14 +271,39 @@ class ModelConfig(Config):
                     profile_kwargs_list.append({})
             kwargs_model["lens_light_profile_kwargs_list"] = profile_kwargs_list
 
-        if (
-            "kwargs_model" in self.settings
-            and self.settings["kwargs_model"] is not None
-        ):
-            for key, value in self.settings["kwargs_model"].items():
-                kwargs_model[key] = value
+        for option_name in ["model_options", "kwargs_model"]:
+            if option_name in self.settings and self.settings[option_name] is not None:
+                for key, value in self.settings[option_name].items():
+                    kwargs_model[key] = value
+
+        if "special_options" in self.settings:
+            special = self.settings["special_options"]
+            cosmo = self._get_cosmology_instance(special)
+            kwargs_model.update({"cosmo": cosmo})
 
         return kwargs_model
+
+    @staticmethod
+    def _get_cosmology_instance(special):
+        """Build and return a cosmology instance from the "special_options" settings.
+
+        This is a helper method for backward compatibility with older config files that
+        specified cosmology settings in "special_options" without the "cosmology" key. It
+        checks for the presence of cosmology-related keys and attempts to build a cosmology
+        instance if they are found. If the "cosmology" key is present, it uses the new
+        registry-based approach. If not, it falls back to the old method of checking for
+        specific cosmology parameters.
+        :param special: the "special_options" dictionary from settings
+        :type special: `dict`
+        :return: a cosmology instance
+        :rtype: `astropy.cosmology.Cosmology` or `None`
+        """
+        cosmo_keys = set(special) & _COSMOLOGY_KEYS
+        cosmo = None
+        if cosmo_keys:
+            cosmo = _build_cosmology(special)
+
+        return cosmo
 
     def get_kwargs_constraints(self, use_jax=False):
         """Create `kwargs_constraints` dictionary for lenstronomy.
@@ -278,7 +334,7 @@ class ModelConfig(Config):
         }
 
         if len(self.get_point_source_model_list()) > 0:
-            num_image = len(self.settings["point_source_option"]["ra_init"])
+            num_image = len(self.settings["point_source_options"]["ra_init"])
             kwargs_constraints["num_point_source_list"] = [num_image]
 
             # solver type is not supported in JAXtronomy
@@ -292,10 +348,18 @@ class ModelConfig(Config):
         if "special" in self.settings["model"]:
             special_list = self.get_special_list()
 
-            for i, model in enumerate(special_list):
-                if model == "astrometric_uncertainty":
+            for item in special_list:
+                if item == "astrometric_uncertainty":
                     kwargs_constraints.update({"point_source_offset": True})
-                if model == "time_delay_likelihood":
+                if item == "general_scaling":
+                    kwargs_constraints.update(
+                        {
+                            "general_scaling": self.settings["special_options"][
+                                "general_scaling"
+                            ]
+                        }
+                    )
+                if item == "time_delay_likelihood":
                     kwargs_constraints.update({"Ddt_sampling": True})
 
         if (
@@ -486,10 +550,10 @@ class ModelConfig(Config):
         }
 
         if (
-            "lens_option" in self.settings
-            and "gaussian_prior" in self.settings["lens_option"]
+            "lens_options" in self.settings
+            and "gaussian_prior" in self.settings["lens_options"]
         ):
-            for index, param_dict in self.settings["lens_option"][
+            for index, param_dict in self.settings["lens_options"][
                 "gaussian_prior"
             ].items():
                 for i in param_dict:
@@ -498,10 +562,10 @@ class ModelConfig(Config):
                     kwargs_likelihood["prior_lens"].append(prior_param)
 
         if (
-            "lens_light_option" in self.settings
-            and "gaussian_prior" in self.settings["lens_light_option"]
+            "lens_light_options" in self.settings
+            and "gaussian_prior" in self.settings["lens_light_options"]
         ):
-            for index, param_dict in self.settings["lens_light_option"][
+            for index, param_dict in self.settings["lens_light_options"][
                 "gaussian_prior"
             ].items():
                 for i in param_dict:
@@ -510,10 +574,10 @@ class ModelConfig(Config):
                     kwargs_likelihood["prior_lens_light"].append(prior_param)
 
         if (
-            "source_light_option" in self.settings
-            and "gaussian_prior" in self.settings["source_light_option"]
+            "source_light_options" in self.settings
+            and "gaussian_prior" in self.settings["source_light_options"]
         ):
-            for index, param_dict in self.settings["source_light_option"][
+            for index, param_dict in self.settings["source_light_options"][
                 "gaussian_prior"
             ].items():
                 for i in param_dict:
@@ -522,10 +586,10 @@ class ModelConfig(Config):
                     kwargs_likelihood["prior_source"].append(prior_param)
 
         if (
-            "point_source_option" in self.settings
-            and "gaussian_prior" in self.settings["point_source_option"]
+            "point_source_options" in self.settings
+            and "gaussian_prior" in self.settings["point_source_options"]
         ):
-            for index, param_dict in self.settings["point_source_option"][
+            for index, param_dict in self.settings["point_source_options"][
                 "gaussian_prior"
             ].items():
                 for i in param_dict:
@@ -533,26 +597,26 @@ class ModelConfig(Config):
                     prior_param.extend(i)
                     kwargs_likelihood["prior_ps"].append(prior_param)
 
-        if "point_source_option" in self.settings:
+        if "point_source_options" in self.settings:
             if (
-                "time_delays_measured" in self.settings["point_source_option"]
-                and "time_delays_covariance" in self.settings["point_source_option"]
+                "time_delays_measured" in self.settings["point_source_options"]
+                and "time_delays_covariance" in self.settings["point_source_options"]
             ):
                 kwargs_likelihood.update({"time_delay_likelihood": True})
 
         use_default_logL_addition = False
 
-        if "lens_option" in self.settings:
+        if "lens_options" in self.settings:
             if any(
-                key in self.settings["lens_option"]
+                key in self.settings["lens_options"]
                 for key in ["limit_mass_pa_from_light", "limit_mass_q_from_light"]
             ):
                 use_default_logL_addition = True
 
-        if "source_light_option" in self.settings:
+        if "source_light_options" in self.settings:
             if (
                 "shapelet_scale_logarithmic_prior"
-                in self.settings["source_light_option"]
+                in self.settings["source_light_options"]
             ):
                 use_default_logL_addition = True
 
@@ -589,6 +653,14 @@ class ModelConfig(Config):
 
         elif custom_logL_addition is not None:
             kwargs_likelihood["custom_logL_addition"] = custom_logL_addition
+
+        for option_name in [
+            "likelihood_options",
+            "kwargs_likelihood",
+        ]:
+            if option_name in self.settings and self.settings[option_name] is not None:
+                for key, value in self.settings[option_name].items():
+                    kwargs_likelihood[key] = value
 
         return kwargs_likelihood
 
@@ -632,11 +704,11 @@ class ModelConfig(Config):
         # Limit the difference between pa_light and pa_mass for the deflector, where pa is the
         # position angle of the major axis
         if (
-            "lens_option" in self.settings
-            and "limit_mass_pa_from_light" in self.settings["lens_option"]
+            "lens_options" in self.settings
+            and "limit_mass_pa_from_light" in self.settings["lens_options"]
             and first_model_has_ellipticity
         ):
-            max_mass_pa_difference = self.settings["lens_option"][
+            max_mass_pa_difference = self.settings["lens_options"][
                 "limit_mass_pa_from_light"
             ]
 
@@ -665,11 +737,11 @@ class ModelConfig(Config):
         # Limit the difference between q_light and q_mass for the deflector, where q is the axis
         # ratio of the elliptical profile
         if (
-            "lens_option" in self.settings
-            and "limit_mass_q_from_light" in self.settings["lens_option"]
+            "lens_options" in self.settings
+            and "limit_mass_q_from_light" in self.settings["lens_options"]
             and first_model_has_ellipticity
         ):
-            max_mass_q_difference = self.settings["lens_option"][
+            max_mass_q_difference = self.settings["lens_options"][
                 "limit_mass_q_from_light"
             ]
 
@@ -693,11 +765,13 @@ class ModelConfig(Config):
 
         # Provide logarithmic_prior on the source light profile beta param
         if (
-            "source_light_option" in self.settings
+            "source_light_options" in self.settings
             and "shapelet_scale_logarithmic_prior"
-            in self.settings["source_light_option"]
+            in self.settings["source_light_options"]
         ):
-            if self.settings["source_light_option"]["shapelet_scale_logarithmic_prior"]:
+            if self.settings["source_light_options"][
+                "shapelet_scale_logarithmic_prior"
+            ]:
                 for i, model in enumerate(self.get_source_light_model_list()):
                     if model == "SHAPELETS":
                         beta = kwargs_source[i]["beta"]
@@ -874,30 +948,40 @@ class ModelConfig(Config):
         :return: list containing the numerics configuration
         :rtype: `list` of `dict`
         """
-        try:
-            self.settings["numeric_option"]["supersampling_factor"]
-        except (KeyError, NameError, TypeError):
-            supersampling_factor = [3] * self.number_of_bands
-        else:
-            supersampling_factor = deepcopy(
-                self.settings["numeric_option"]["supersampling_factor"]
-            )
+        numeric_options = {}
 
-            if supersampling_factor is None:
-                supersampling_factor = [3] * self.number_of_bands
+        for option_name in ["numeric_options", "kwargs_numerics"]:
+            if option_name in self.settings and self.settings[option_name] is not None:
+                for key, value in self.settings[option_name].items():
+                    numeric_options[key] = deepcopy(value)
+
+        supersampling_factor = numeric_options.get(
+            "supersampling_factor", [3] * self.number_of_bands
+        )
+        if supersampling_factor is None:
+            supersampling_factor = [3] * self.number_of_bands
 
         kwargs_numerics = []
         for n in range(self.number_of_bands):
-            kwargs_numerics.append(
-                {
-                    "supersampling_factor": supersampling_factor[n],
-                    "supersampling_convolution": False,
-                    "supersampling_kernel_size": 3,
-                    "flux_evaluate_indexes": None,
-                    "point_source_supersampling_factor": 1,
-                    "compute_mode": "regular",
-                }
-            )
+            kwargs_num = {
+                "supersampling_factor": supersampling_factor[n],
+                "supersampling_convolution": False,
+                "supersampling_kernel_size": 3,
+                "flux_evaluate_indexes": None,
+                "point_source_supersampling_factor": 1,
+                "compute_mode": "regular",
+            }
+
+            for key, value in numeric_options.items():
+                if key == "supersampling_factor":
+                    continue
+
+                if isinstance(value, list) and len(value) == self.number_of_bands:
+                    kwargs_num[key] = deepcopy(value[n])
+                else:
+                    kwargs_num[key] = deepcopy(value)
+
+            kwargs_numerics.append(kwargs_num)
 
         return kwargs_numerics
 
@@ -1027,10 +1111,14 @@ class ModelConfig(Config):
                 else:
                     raise ValueError(f"{model} not supported")
 
-        if "point_source_option" in self.settings:
+        if "special_options" in self.settings:
+            if "general_scaling" in self.settings["special_options"]:
+                special_list.append("general_scaling")
+
+        if "point_source_options" in self.settings:
             if (
-                "time_delays_measured" in self.settings["point_source_option"]
-                and "time_delays_covariance" in self.settings["point_source_option"]
+                "time_delays_measured" in self.settings["point_source_options"]
+                and "time_delays_covariance" in self.settings["point_source_options"]
             ):
                 special_list.append("time_delay_likelihood")
 
@@ -1215,6 +1303,40 @@ class ModelConfig(Config):
                         "theta_E": theta_E_upper_limit,
                         "center_x": center_x + bound,
                         "center_y": center_y + bound,
+                    }
+                )
+            elif model == "FLEXION":
+                fixed.append({"ra_0": 0, "dec_0": 0})
+                init.append(
+                    {
+                        "g1": 0,
+                        "g2": 0,
+                        "g3": 0,
+                        "g4": 0,
+                    }
+                )
+                sigma.append(
+                    {
+                        "g1": 0.01,
+                        "g2": 0.01,
+                        "g3": 0.01,
+                        "g4": 0.01,
+                    }
+                )
+                lower.append(
+                    {
+                        "g1": -0.1,
+                        "g2": -0.1,
+                        "g3": -0.1,
+                        "g4": -0.1,
+                    }
+                )
+                upper.append(
+                    {
+                        "g1": 0.1,
+                        "g2": 0.1,
+                        "g3": 0.1,
+                        "g4": 0.1,
                     }
                 )
             else:
@@ -1431,15 +1553,15 @@ class ModelConfig(Config):
                 )
             elif model == "SHAPELETS":
                 # If n_max is given as a single integer, convert it to a list
-                if isinstance(self.settings["source_light_option"]["n_max"], int):
-                    self.settings["source_light_option"]["n_max"] = [
-                        self.settings["source_light_option"]["n_max"]
+                if isinstance(self.settings["source_light_options"]["n_max"], int):
+                    self.settings["source_light_options"]["n_max"] = [
+                        self.settings["source_light_options"]["n_max"]
                         for _ in range(self.number_of_bands)
                     ]
 
                 fixed.append(
                     {
-                        "n_max": self.settings["source_light_option"]["n_max"][
+                        "n_max": self.settings["source_light_options"]["n_max"][
                             shapelets_index
                         ]
                     }
@@ -1449,7 +1571,7 @@ class ModelConfig(Config):
                         "center_x": 0.0,
                         "center_y": 0.0,
                         "beta": 0.10,
-                        "n_max": self.settings["source_light_option"]["n_max"][
+                        "n_max": self.settings["source_light_options"]["n_max"][
                             shapelets_index
                         ],
                     }
@@ -1494,10 +1616,10 @@ class ModelConfig(Config):
             init.append(
                 {
                     "ra_image": np.array(
-                        self.settings["point_source_option"]["ra_init"]
+                        self.settings["point_source_options"]["ra_init"]
                     ),
                     "dec_image": np.array(
-                        self.settings["point_source_option"]["dec_init"]
+                        self.settings["point_source_options"]["dec_init"]
                     ),
                 }
             )
@@ -1513,18 +1635,18 @@ class ModelConfig(Config):
             lower.append(
                 {
                     "ra_image": init[0]["ra_image"]
-                    - self.settings["point_source_option"]["bound"],
+                    - self.settings["point_source_options"]["bound"],
                     "dec_image": init[0]["dec_image"]
-                    - self.settings["point_source_option"]["bound"],
+                    - self.settings["point_source_options"]["bound"],
                 }
             )
 
             upper.append(
                 {
                     "ra_image": init[0]["ra_image"]
-                    + self.settings["point_source_option"]["bound"],
+                    + self.settings["point_source_options"]["bound"],
                     "dec_image": init[0]["dec_image"]
-                    + self.settings["point_source_option"]["bound"],
+                    + self.settings["point_source_options"]["bound"],
                 }
             )
 
@@ -1549,19 +1671,19 @@ class ModelConfig(Config):
         upper = {}
         fixed = {}
 
-        for i, model in enumerate(special_list):
-            if model == "astrometric_uncertainty":
+        for item in special_list:
+            if item == "astrometric_uncertainty":
                 num_point_sources = len(
-                    np.array(self.settings["special_option"]["delta_x_image"])
+                    np.array(self.settings["special_options"]["delta_x_image"])
                 )
 
                 init.update(
                     {
                         "delta_x_image": np.array(
-                            self.settings["special_option"]["delta_x_image"]
+                            self.settings["special_options"]["delta_x_image"]
                         ),
                         "delta_y_image": np.array(
-                            self.settings["special_option"]["delta_y_image"]
+                            self.settings["special_options"]["delta_y_image"]
                         ),
                     }
                 )
@@ -1575,11 +1697,11 @@ class ModelConfig(Config):
 
                 lower.update(
                     {
-                        "delta_x_image": self.settings["special_option"][
+                        "delta_x_image": self.settings["special_options"][
                             "delta_image_lower"
                         ]
                         * np.ones(num_point_sources),
-                        "delta_y_image": self.settings["special_option"][
+                        "delta_y_image": self.settings["special_options"][
                             "delta_image_lower"
                         ]
                         * np.ones(num_point_sources),
@@ -1588,11 +1710,11 @@ class ModelConfig(Config):
 
                 upper.update(
                     {
-                        "delta_x_image": self.settings["special_option"][
+                        "delta_x_image": self.settings["special_options"][
                             "delta_image_upper"
                         ]
                         * np.ones(num_point_sources),
-                        "delta_y_image": self.settings["special_option"][
+                        "delta_y_image": self.settings["special_options"][
                             "delta_image_upper"
                         ]
                         * np.ones(num_point_sources),
@@ -1600,10 +1722,72 @@ class ModelConfig(Config):
                 )
 
                 fixed.update({})
-            elif model == "time_delay_likelihood":
-                H0 = self.settings["special_option"]["H0"] * u.km / u.s / u.Mpc
-                Om0 = self.settings["special_option"]["Om0"]
-                cosmo = FlatLambdaCDM(H0=H0, Om0=Om0, Ob0=None)
+            elif item == "general_scaling":
+                general_scaling = self.settings["special_options"]["general_scaling"]
+
+                for param_name, values in general_scaling.items():
+                    if f"{param_name}_scale_factor" in self.settings["special_options"]:
+                        init.update(
+                            {
+                                f"{param_name}_scale_factor": self.settings[
+                                    "special_options"
+                                ][f"{param_name}_scale_factor"]
+                            }
+                        )
+                    else:
+                        raise ValueError(
+                            f"{param_name}_scale_factor not found in special_options!"
+                        )
+                    if (
+                        f"{param_name}_scale_factor_sigma"
+                        in self.settings["special_options"]
+                    ):
+                        sigma.update(
+                            {
+                                f"{param_name}_scale_factor": self.settings[
+                                    "special_options"
+                                ][f"{param_name}_scale_factor_sigma"]
+                            }
+                        )
+                    else:
+                        raise ValueError(
+                            f"{param_name}_scale_factor_sigma not in special_options!"
+                        )
+                    lower.update(
+                        {
+                            f"{param_name}_scale_factor": [
+                                0.5
+                                * self.settings["special_options"][
+                                    f"{param_name}_scale_factor"
+                                ][0]
+                            ]
+                        }
+                    )
+                    upper.update(
+                        {
+                            f"{param_name}_scale_factor": [
+                                2.0
+                                * self.settings["special_options"][
+                                    f"{param_name}_scale_factor"
+                                ][0]
+                            ]
+                        }
+                    )
+                    if f"{param_name}_scale_pow" in self.settings["special_options"]:
+                        fixed.update(
+                            {
+                                f"{param_name}_scale_pow": self.settings[
+                                    "special_options"
+                                ][f"{param_name}_scale_pow"]
+                            }
+                        )
+                    else:
+                        raise ValueError(
+                            f"{param_name}_scale_pow not found in special_options!"
+                        )
+            elif item == "time_delay_likelihood":
+                special = self.settings["special_options"]
+                cosmo = self._get_cosmology_instance(special)
                 lens_cosmo_for_Ddt = LensCosmo(
                     z_lens=self.settings["kwargs_model"]["z_lens"],
                     z_source=self.settings["kwargs_model"]["z_source"],
@@ -1632,7 +1816,7 @@ class ModelConfig(Config):
         :rtype: `list` of `dict`
         """
         assert component in ["lens", "lens_light", "source_light"]
-        option_str = component + "_option"
+        option_str = component + "_options"
 
         try:
             self.settings[option_str]["fix"]
@@ -1675,6 +1859,36 @@ class ModelConfig(Config):
 
         return kwargs_params
 
+    def get_measured_time_delays(self):
+        """Get time delays and uncertainties if specified in the configuration.
+
+        :return: dictionary with time delays and uncertainties, or an empty dictionary if not specified
+        :rtype: `dict`
+        """
+        kwargs_time_delays = {}
+        model = self.settings.get("model", {})
+        point_source_options = self.settings.get(
+            "point_source_options", self.settings.get("point_source_option", {})
+        )
+
+        if (
+            "point_source" in model
+            and "time_delays_measured" in point_source_options
+            and "time_delays_covariance" in point_source_options
+        ):
+            kwargs_time_delays.update(
+                {
+                    "time_delays_measured": np.array(
+                        point_source_options["time_delays_measured"]
+                    ),
+                    "time_delays_uncertainties": np.array(
+                        point_source_options["time_delays_covariance"]
+                    ),
+                }
+            )
+
+        return kwargs_time_delays
+
     def get_psf_supersampled_factor(self):
         """Retrieve PSF supersampling factor if specified in the config file.
 
@@ -1687,3 +1901,153 @@ class ModelConfig(Config):
             return 1
         else:
             return self.settings["psf_supersampled_factor"]
+
+
+# Registry of supported cosmology classes and their unitful parameters.
+# Keys are the string names a user puts in settings["special_options"]["cosmology"].
+COSMOLOGY_REGISTRY = {
+    "FlatLambdaCDM": {
+        "class": FlatLambdaCDM,
+        # Parameters that require units before being passed to the constructor.
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        # Required parameters (must be present in settings).
+        "required": {"H0", "Om0"},
+    },
+    "LambdaCDM": {
+        "class": LambdaCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "Ode0"},
+    },
+    "FlatwCDM": {
+        "class": FlatwCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0"},
+    },
+    "wCDM": {
+        "class": wCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "Ode0"},
+    },
+    "Flatw0waCDM": {
+        "class": Flatw0waCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0"},
+    },
+    "w0waCDM": {
+        "class": w0waCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "Ode0"},
+    },
+    "w0wzCDM": {
+        "class": w0wzCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "Ode0", "w0", "wz"},
+    },
+    "Flatw0wzCDM": {
+        "class": Flatw0wzCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "w0", "wz"},
+    },
+    "wpwaCDM": {
+        "class": wpwaCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "Ode0", "wp", "wa", "zp"},
+    },
+    "FlatwpwaCDM": {
+        "class": FlatwpwaCDM,
+        "unit_params": {
+            "H0": u.km / u.s / u.Mpc,
+            "Tcmb0": u.K,
+        },
+        "required": {"H0", "Om0", "wp", "wa", "zp"},
+    },
+}
+
+# Parameters that are forwarded to the cosmology constructor
+_COSMOLOGY_KEYS = {
+    "H0",
+    "Om0",
+    "Ode0",
+    "Tcmb0",
+    "Neff",
+    "m_nu",
+    "Ob0",
+    "w0",
+    "wa",
+    "wz",
+    "wp",
+    "zp",
+}
+
+
+def _build_cosmology(special_options):
+    """Build and return an astropy cosmology object from *special_options*.
+
+    The ``cosmology`` key selects the model (default: ``"FlatLambdaCDM"``).
+    All other keys are forwarded as constructor arguments, with unit
+    conversions applied where required.
+
+    :param special_options: dictionary of options for special likelihoods, including cosmology parameters
+    :type special_options: `dict`
+    :return: an instance of the selected astropy cosmology class
+    :rtype: `astropy.cosmology.Cosmology`
+    :raises ValueError: if the specified cosmology is not supported or if required parameters are missing
+    """
+    cosmo_name = special_options.get("cosmology", "FlatLambdaCDM")
+
+    if cosmo_name not in COSMOLOGY_REGISTRY:
+        supported = ", ".join(COSMOLOGY_REGISTRY)
+        raise ValueError(
+            f"Unsupported cosmology '{cosmo_name}'. "
+            f"Supported options are: {supported}"
+        )
+
+    entry = COSMOLOGY_REGISTRY[cosmo_name]
+    cosmo_cls = entry["class"]
+    unit_params = entry["unit_params"]
+    required = entry["required"]
+
+    # Collect all keys that are cosmology constructor arguments.
+    cosmo_kwargs = {k: v for k, v in special_options.items() if k in _COSMOLOGY_KEYS}
+
+    # Validate required parameters.
+    missing = required - cosmo_kwargs.keys()
+    if missing:
+        raise ValueError(
+            f"Cosmology '{cosmo_name}' requires the following missing "
+            f"parameter(s): {', '.join(sorted(missing))}"
+        )
+
+    # Apply units to parameters that need them.
+    for param, unit in unit_params.items():
+        if param in cosmo_kwargs:
+            cosmo_kwargs[param] = cosmo_kwargs[param] * unit
+
+    return cosmo_cls(**cosmo_kwargs)

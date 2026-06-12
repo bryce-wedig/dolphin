@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dolphin.processor.config import Config
 from dolphin.processor.config import ModelConfig
+from dolphin.processor.config import _build_cosmology
 from dolphin.processor.files import FileSystem
 
 _ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -31,6 +32,108 @@ class TestConfig(object):
         )
         config = Config()
         config.load_config_from_yaml(str(test_setting_file.resolve()))
+
+    def test_build_cosmology(self):
+        """Test the `_build_cosmology` function."""
+        # Test default FlatLambdaCDM with loader keys filtered out
+        cosmo = _build_cosmology({"H0": 70, "Om0": 0.3, "delta_x_image": [0.01]})
+        assert type(cosmo).__name__ == "FlatLambdaCDM"
+        assert cosmo.H0.value == 70
+        assert cosmo.Om0 == 0.3
+
+        # Test LambdaCDM with Tcmb0
+        cosmo = _build_cosmology(
+            {
+                "cosmology": "LambdaCDM",
+                "H0": 72,
+                "Om0": 0.28,
+                "Ode0": 0.72,
+                "Tcmb0": 2.725,
+            }
+        )
+        assert type(cosmo).__name__ == "LambdaCDM"
+        assert cosmo.H0.value == 72
+        assert cosmo.Tcmb0.value == 2.725
+
+        # Test unsupported cosmology
+        with pytest.raises(ValueError, match="Unsupported cosmology 'InvalidCosmo'"):
+            _build_cosmology({"cosmology": "InvalidCosmo", "H0": 70, "Om0": 0.3})
+
+        # Test missing required parameters
+        with pytest.raises(
+            ValueError, match="requires the following missing parameter"
+        ):
+            _build_cosmology({"cosmology": "LambdaCDM", "H0": 70, "Om0": 0.3})
+
+        # Test other models to ensure full registry functions
+        cosmo = _build_cosmology(
+            {"cosmology": "FlatwCDM", "H0": 70, "Om0": 0.3, "w0": -0.9}
+        )
+        assert type(cosmo).__name__ == "FlatwCDM"
+
+        cosmo = _build_cosmology(
+            {"cosmology": "wCDM", "H0": 70, "Om0": 0.3, "Ode0": 0.7, "w0": -0.9}
+        )
+        assert type(cosmo).__name__ == "wCDM"
+
+        cosmo = _build_cosmology(
+            {"cosmology": "Flatw0waCDM", "H0": 70, "Om0": 0.3, "w0": -0.9, "wa": 0.1}
+        )
+        assert type(cosmo).__name__ == "Flatw0waCDM"
+
+        cosmo = _build_cosmology(
+            {
+                "cosmology": "w0waCDM",
+                "H0": 70,
+                "Om0": 0.3,
+                "Ode0": 0.7,
+                "w0": -0.9,
+                "wa": 0.1,
+            }
+        )
+        assert type(cosmo).__name__ == "w0waCDM"
+
+        cosmo = _build_cosmology(
+            {"cosmology": "Flatw0wzCDM", "H0": 70, "Om0": 0.3, "w0": -0.9, "wz": 0.1}
+        )
+        assert type(cosmo).__name__ == "Flatw0wzCDM"
+
+        cosmo = _build_cosmology(
+            {
+                "cosmology": "w0wzCDM",
+                "H0": 70,
+                "Om0": 0.3,
+                "Ode0": 0.7,
+                "w0": -0.9,
+                "wz": 0.1,
+            }
+        )
+        assert type(cosmo).__name__ == "w0wzCDM"
+
+        cosmo = _build_cosmology(
+            {
+                "cosmology": "FlatwpwaCDM",
+                "H0": 70,
+                "Om0": 0.3,
+                "wp": -0.9,
+                "wa": 0.1,
+                "zp": 0.5,
+            }
+        )
+        assert type(cosmo).__name__ == "FlatwpwaCDM"
+
+        cosmo = _build_cosmology(
+            {
+                "cosmology": "wpwaCDM",
+                "H0": 70,
+                "Om0": 0.3,
+                "Ode0": 0.7,
+                "wp": -0.9,
+                "wa": 0.1,
+                "zp": 0.5,
+            }
+        )
+        assert type(cosmo).__name__ == "wpwaCDM"
 
 
 class TestModelConfig(object):
@@ -121,12 +224,17 @@ class TestModelConfig(object):
         kwargs_model_4 = self.config_4.get_kwargs_model()
         assert kwargs_model_4["lens_model_list"] == ["EPL", "SHEAR_GAMMA_PSI"]
 
+        config1 = deepcopy(self.config_1)
+        config1.settings["special_options"] = {"H0": 70, "Om0": 0.3}
+        kwargs_model_1 = config1.get_kwargs_model()
+        assert "cosmo" in kwargs_model_1
+
     def test_get_kwargs_model_mge(self):
         """Test `get_kwargs_model` MGE_SET / MGE_SET_ELLIPSE handling."""
         # MGE_SET_ELLIPSE with explicit n_comp in mge_config
         config_mge = deepcopy(self.config_1)
         config_mge.settings["model"]["lens_light"] = ["MGE_SET_ELLIPSE"]
-        config_mge.settings["lens_light_option"] = {"mge_config": {0: {"n_comp": 15}}}
+        config_mge.settings["lens_light_options"] = {"mge_config": {0: {"n_comp": 15}}}
         kwargs = config_mge.get_kwargs_model()
         assert "lens_light_profile_kwargs_list" in kwargs
         assert kwargs["lens_light_profile_kwargs_list"] == [{"n_comp": 15}]
@@ -226,10 +334,14 @@ class TestModelConfig(object):
 
         config_5 = deepcopy(self.config_5)
         config_5.settings["model"]["special"] = ["astrometric_uncertainty"]
+        config_5.settings["special_options"] = {
+            "general_scaling": {"theta_E": [False, 1, 1]}
+        }
 
         kwargs_constraints5 = config_5.get_kwargs_constraints()
         assert kwargs_constraints5["point_source_offset"]
         assert kwargs_constraints5["Ddt_sampling"]
+        assert kwargs_constraints5["general_scaling"]
 
     def test_get_kwargs_likelihood(self):
         """Test `get_kwargs_likelihood` method."""
@@ -274,7 +386,7 @@ class TestModelConfig(object):
         assert kwargs_likelihood2["prior_source"] == [[0, "beta", 0.15, 0.05]]
 
         config = deepcopy(self.config_3)
-        config.settings["point_source_option"] = {
+        config.settings["point_source_options"] = {
             "gaussian_prior": {0: [["ra_image", 0.21, 0.15]]}
         }
 
@@ -321,6 +433,15 @@ class TestModelConfig(object):
         )
         assert kwargs_likelihood5["custom_logL_addition"] == _custom_logL_func
 
+        config = deepcopy(self.config_2)
+        config.settings["likelihood_options"] = {
+            "check_bounds": False,
+            "source_marg": True,
+        }
+        kwargs_likelihood_alias = config.get_kwargs_likelihood()
+        assert kwargs_likelihood_alias["check_bounds"] is False
+        assert kwargs_likelihood_alias["source_marg"] is True
+
     def test_custom_logL_addition(self):
         """Test `custom_logL_addition` method."""
         # Mass paramters : (phi_m = 0 deg, q_m = 0.8)
@@ -360,9 +481,9 @@ class TestModelConfig(object):
 
         # Settings set to False  (phi_L = 20 deg, q_L = 0.9)
         config2 = deepcopy(self.config_1)
-        config2.settings["lens_option"]["limit_mass_pa_from_light"] = np.inf
-        config2.settings["lens_option"]["limit_mass_q_from_light"] = np.inf
-        config2.settings["source_light_option"][
+        config2.settings["lens_options"]["limit_mass_pa_from_light"] = np.inf
+        config2.settings["lens_options"]["limit_mass_q_from_light"] = np.inf
+        config2.settings["source_light_options"][
             "shapelet_scale_logarithmic_prior"
         ] = False
         prior = config2.custom_logL_addition(
@@ -373,8 +494,8 @@ class TestModelConfig(object):
 
         # Change setting data type (phi_L = 20 deg, q_L = 0.9)
         config3 = deepcopy(self.config_1)
-        config3.settings["lens_option"]["limit_mass_q_from_light"] = 0.2
-        config3.settings["lens_option"]["limit_mass_pa_from_light"] = 5
+        config3.settings["lens_options"]["limit_mass_q_from_light"] = 0.2
+        config3.settings["lens_options"]["limit_mass_pa_from_light"] = 5
         prior = config3.custom_logL_addition(
             kwargs_lens=[{"e1": 0.111, "e2": 0.0}],
             kwargs_lens_light=[{"e1": 0.0403, "e2": 0.0338}],
@@ -383,7 +504,7 @@ class TestModelConfig(object):
 
         # Raise error when settings are not bool, int or float
         config4a = deepcopy(self.config_1)
-        config4a.settings["lens_option"]["limit_mass_pa_from_light"] = "Test"
+        config4a.settings["lens_options"]["limit_mass_pa_from_light"] = "Test"
         with pytest.raises(ValueError):
             config4a.custom_logL_addition(
                 kwargs_lens=[{"e1": 0.111, "e2": 0.0}],
@@ -391,7 +512,7 @@ class TestModelConfig(object):
             )
 
         config4b = deepcopy(self.config_1)
-        config4b.settings["lens_option"]["limit_mass_q_from_light"] = "Test"
+        config4b.settings["lens_options"]["limit_mass_q_from_light"] = "Test"
         with pytest.raises(ValueError):
             config4b.custom_logL_addition(
                 kwargs_lens=[{"e1": 0.111, "e2": 0.0}],
@@ -519,15 +640,37 @@ class TestModelConfig(object):
         assert test_numerics == self.config_1.get_kwargs_numerics()
 
         self.config_5.settings["band"] = ["F390W"]
-        if "numeric_option" in self.config_5.settings:
-            del self.config_5.settings["numeric_option"]
+        if "numeric_options" in self.config_5.settings:
+            del self.config_5.settings["numeric_options"]
         assert test_numerics == self.config_5.get_kwargs_numerics()
 
         config = deepcopy(self.config_1)
-        config.settings["numeric_option"]["supersampling_factor"] = None
+        config.settings["numeric_options"]["supersampling_factor"] = None
         kwargs_numerics = config.get_kwargs_numerics()
         for kwargs_numerics_band in kwargs_numerics:
             assert kwargs_numerics_band["supersampling_factor"] == 3
+
+        config = deepcopy(self.config_3)
+        config.settings["numeric_options"] = {
+            "supersampling_factor": [2, 4],
+            "compute_mode": ["adaptive", "regular"],
+            "point_source_supersampling_factor": [1, 2],
+        }
+        kwargs_numerics = config.get_kwargs_numerics()
+        assert kwargs_numerics[0]["supersampling_factor"] == 2
+        assert kwargs_numerics[1]["supersampling_factor"] == 4
+        assert kwargs_numerics[0]["compute_mode"] == "adaptive"
+        assert kwargs_numerics[1]["compute_mode"] == "regular"
+        assert kwargs_numerics[0]["point_source_supersampling_factor"] == 1
+        assert kwargs_numerics[1]["point_source_supersampling_factor"] == 2
+
+        # Scalar override should be broadcast to each band (hits the non-list branch).
+        config = deepcopy(self.config_1)
+        config.settings["numeric_options"] = {
+            "compute_mode": "adaptive",
+        }
+        kwargs_numerics = config.get_kwargs_numerics()
+        assert kwargs_numerics[0]["compute_mode"] == "adaptive"
 
     def test_get_point_source_params(self):
         """Test `get_point_source_params` method."""
@@ -627,8 +770,12 @@ class TestModelConfig(object):
         # if specified in config file
         config = deepcopy(self.config_5)
         config.settings["model"]["special"] = ["astrometric_uncertainty"]
+        config.settings["special_options"] = {
+            "general_scaling": {"theta_E": [False, 1, 1]}
+        }
         assert config.get_special_list() == [
             "astrometric_uncertainty",
+            "general_scaling",
             "time_delay_likelihood",
         ]
 
@@ -672,6 +819,25 @@ class TestModelConfig(object):
             "center_x": 1.5,
             "center_y": 1.5,
             "theta_E": 0.1,
+        }
+
+        config1 = deepcopy(self.config_1)
+        config1.settings["model"]["lens"] = ["FLEXION"]
+        params1 = config1.get_lens_model_params()
+        assert params1[0][0] == {"g1": 0, "g2": 0, "g3": 0, "g4": 0}
+        assert params1[1][0] == {"g1": 0.01, "g2": 0.01, "g3": 0.01, "g4": 0.01}
+        assert params1[2][0] == {"ra_0": 0, "dec_0": 0}
+        assert params1[3][0] == {
+            "g1": -0.1,
+            "g2": -0.1,
+            "g3": -0.1,
+            "g4": -0.1,
+        }
+        assert params1[4][0] == {
+            "g1": 0.1,
+            "g2": 0.1,
+            "g3": 0.1,
+            "g4": 0.1,
         }
 
     def test_get_lens_light_model_params(self):
@@ -719,7 +885,7 @@ class TestModelConfig(object):
 
         config2 = deepcopy(self.config_1)
         config2.settings["model"]["lens_light"] = ["UNIFORM"]
-        config2.settings["lens_light_option"]["fix"] = {}
+        config2.settings["lens_light_options"]["fix"] = {}
         params = config2.get_lens_light_model_params()
 
         assert params[0] == [{"amp": 0.0}]
@@ -737,28 +903,32 @@ class TestModelConfig(object):
 
         config2 = deepcopy(self.config_3)
         config2.get_source_light_model_params()
-        assert config2.settings["source_light_option"]["n_max"] == [2, 4]
+        assert config2.settings["source_light_options"]["n_max"] == [2, 4]
 
         config3 = deepcopy(self.config_3)
-        config3.settings["source_light_option"]["n_max"] = 2
+        config3.settings["source_light_options"]["n_max"] = 2
         config3.get_source_light_model_params()
-        assert config3.settings["source_light_option"]["n_max"] == [2, 2]
+        assert config3.settings["source_light_options"]["n_max"] == [2, 2]
 
     def test_get_special_params(self):
         """Test `get_special_params` method."""
 
-        # Test 1: ensure consistency of astrometric uncertainty params
+        # Test 1: ensure consistency of special params
         # if specified in config file
         config = deepcopy(self.config_5)
 
         config.settings["model"]["special"] = ["astrometric_uncertainty"]
-        config.settings["special_option"] = {
+        config.settings["special_options"] = {
             "delta_x_image": [0.004, 0.004, 0.004, 0.004],
             "delta_y_image": [0.004, 0.004, 0.004, 0.004],
             "delta_image_lower": -0.004,
             "delta_image_upper": 0.004,
             "H0": 70,
             "Om0": 0.3,
+            "general_scaling": {"theta_E": [False, 1, 1]},
+            "theta_E_scale_factor": [1],
+            "theta_E_scale_factor_sigma": [0.05],
+            "theta_E_scale_pow": [1],
         }
 
         params = config.get_special_params()
@@ -783,12 +953,17 @@ class TestModelConfig(object):
         assert np.all(lower["delta_y_image"] == -0.004)
         assert np.all(upper["delta_y_image"] == 0.004)
 
+        assert init["theta_E_scale_factor"] == [1]
+        assert sigma["theta_E_scale_factor"] == [0.05]
+        assert lower["theta_E_scale_factor"] == [0.5]
+        assert upper["theta_E_scale_factor"] == [2]
+
         assert "D_dt" in init
         assert "D_dt" in sigma
         assert "D_dt" in lower
         assert "D_dt" in upper
 
-        assert fixed == {}
+        assert fixed == {"theta_E_scale_pow": [1]}
 
         # Test 2: ensure special params is empty list of dictionaries
         # if not specified in the config file
@@ -797,6 +972,29 @@ class TestModelConfig(object):
         params = config.get_special_params()
 
         assert params == [{}, {}, {}, {}, {}]
+
+        # Test 3: ensure proper error codes
+
+        config5 = deepcopy(self.config_5)
+
+        config5.settings["special_options"] = {
+            "general_scaling": {"theta_E": [False, 1, 1]}
+        }
+
+        with pytest.raises(ValueError):
+            config5.get_special_params()
+
+        config5.settings["special_options"].update({"theta_E_scale_factor": [1]})
+
+        with pytest.raises(ValueError):
+            config5.get_special_params()
+
+        config5.settings["special_options"].update(
+            {"theta_E_scale_factor_sigma": [0.05]}
+        )
+
+        with pytest.raises(ValueError):
+            config5.get_special_params()
 
     def test_fill_in_fixed_from_settings(self):
         """Test `fill_in_fixed_from_settings` method."""
@@ -921,12 +1119,12 @@ class TestModelConfig(object):
         assert config._get_mge_n_comp(0) == 20
 
         # With mge_config using integer keys (hits `if` branch)
-        config.settings["lens_light_option"] = {"mge_config": {0: {"n_comp": 15}}}
+        config.settings["lens_light_options"] = {"mge_config": {0: {"n_comp": 15}}}
         assert config._get_mge_n_comp(0) == 15
         assert config._get_mge_n_comp(1) == 20  # Not configured, returns default
 
         # With mge_config using string keys (hits `elif` branch)
-        config.settings["lens_light_option"] = {"mge_config": {"0": {"n_comp": 12}}}
+        config.settings["lens_light_options"] = {"mge_config": {"0": {"n_comp": 12}}}
         assert config._get_mge_n_comp(0) == 12
         assert config._get_mge_n_comp(1) == 20  # Not configured, returns default
 

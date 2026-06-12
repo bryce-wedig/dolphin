@@ -53,7 +53,7 @@ Model Section
 
   - Suboptions:
 
-    - ``lens``: List of lens mass profiles. Supported models include: ``EPL``, ``SIE``, ``SIS``, ``SPEP``, ``PEMD``, ``SHEAR_GAMMA_PSI``.
+    - ``lens``: List of lens mass profiles. Supported models include: ``EPL``, ``SIE``, ``SIS``, ``SPEP``, ``PEMD``, ``SHEAR_GAMMA_PSI``, ``FLEXION``.
 
       - Type: ``list of strings``
       - Example:
@@ -102,7 +102,7 @@ Model Section
 Lens Options
 ------------
 
-- ``lens_option``: Additional options for the lens model.
+- ``lens_options``: Additional options for the lens model.
 
   - Suboptions:
 
@@ -203,7 +203,7 @@ Satellites Option
 Lens Light Options
 ------------------
 
-- ``lens_light_option``: *(Optional)* Additional options for the lens light model.
+- ``lens_light_options``: *(Optional)* Additional options for the lens light model.
 
   - Suboptions:
 
@@ -241,7 +241,7 @@ Lens Light Options
 Source Light Options
 --------------------
 
-- ``source_light_option``: *(Optional)* Additional options for the source light model.
+- ``source_light_options``: *(Optional)* Additional options for the source light model.
 
   - Suboptions:
 
@@ -276,7 +276,7 @@ Source Light Options
 Point Source Options
 --------------------
 
-- ``point_source_option``: *(Optional)* Options for point source models.
+- ``point_source_options``: *(Optional)* Options for point source models.
 
   - Suboptions:
 
@@ -338,7 +338,7 @@ Point Source Options
 Special Options
 ---------------
 
-- ``special_option``: *(Optional)* Initialization of special parameters.
+- ``special_options``: *(Optional)* Initialization of special parameters.
 
   - Suboptions:
 
@@ -378,7 +378,16 @@ Special Options
         
            delta_image_upper: 0.004
 
-    - ``H0``: Fiducial Hubble constant in km/s/Mpc.
+    - ``cosmology``: *(Optional)* Astropy cosmology model to use for time-delay computations. Supported models: ``FlatLambdaCDM`` (default), ``LambdaCDM``, ``FlatwCDM``, ``wCDM``, ``Flatw0waCDM``, ``w0waCDM``, ``w0wzCDM``, ``Flatw0wzCDM``, ``wpwaCDM``, ``FlatwpwaCDM``.
+
+      - Type: ``string``
+      - Example:
+
+        .. code-block:: yaml
+
+           cosmology: "FlatLambdaCDM"
+
+    - ``H0``: Fiducial Hubble constant in km/s/Mpc (required for all cosmologies).
   
       - Type: ``float``
       - Example:
@@ -387,7 +396,7 @@ Special Options
 
           H0: 70.0
 
-    - ``Om0``: Fiducial matter energy density.
+    - ``Om0``: Fiducial matter energy density at z=0 (required for all cosmologies).
 
       - Type: ``float``
       - Example:
@@ -395,6 +404,114 @@ Special Options
         .. code-block:: yaml
 
           Om0: 0.3
+
+    - ``Ode0``: *(Optional)* Fiducial dark energy density at z=0 (required for non-flat cosmologies like ``LambdaCDM``, ``wCDM``, ``w0waCDM``, ``w0wzCDM``, ``wpwaCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          Ode0: 0.7
+
+    - ``w0``: *(Optional)* Dark energy equation of state parameter at z=0 (used in ``wCDM``, ``FlatwCDM``, ``w0waCDM``, ``Flatw0waCDM``, ``w0wzCDM``, ``Flatw0wzCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          w0: -1.0
+
+    - ``wa``: *(Optional)* Dark energy equation of state parameter derivative (used in ``w0waCDM``, ``Flatw0waCDM``, ``wpwaCDM``, ``FlatwpwaCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          wa: 0.0
+
+    - ``wz``: *(Optional)* Dark energy equation of state parameter derivative with respect to redshift (used in ``w0wzCDM``, ``Flatw0wzCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          wz: 0.1
+
+    - ``wp``: *(Optional)* Dark energy equation of state parameter at the pivot redshift (used in ``wpwaCDM``, ``FlatwpwaCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          wp: -1.0
+
+    - ``zp``: *(Optional)* Pivot redshift (used in ``wpwaCDM``, ``FlatwpwaCDM``).
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          zp: 0.5
+
+    - ``Tcmb0``: *(Optional)* Temperature of the CMB at z=0 in Kelvin.
+
+      - Type: ``float``
+      - Example:
+
+        .. code-block:: yaml
+
+          Tcmb0: 2.725
+
+    - ``general_scaling``: Scale specific model parameters together across multiple profiles. Input should be a dictionary mapping parameter names to the masks defining which lens models are scaled together.
+
+      - Type: ``dictionary``
+      - Example: Scaling ``theta_E`` for the second and third mass profiles together, but not the first.
+
+        .. code-block:: yaml
+
+          general_scaling:
+            theta_E:
+              [False, 1, 1]
+
+    - ``{param_name}_scale_factor``: The scaling relation factor for the specified `param_name` across multiple profiles. Instead of individually sampling the connected parameters, only this scale factor will be sampled, and all the connected parameters will be scaled based on the same factor.
+  
+      - Type: ``list``
+      - Example:
+
+        .. code-block:: yaml
+
+          theta_E_scale_factor: [1]
+
+    - ``{param_name}_scale_factor_sigma``: Initial paramater spread relative to ``{param_name}_scale_factor``.
+
+      - Type: ``list``
+      - Example:
+
+        .. code-block:: yaml
+
+          theta_E_scale_factor_sigma: [0.05]
+
+    - ``{param_name}_scale_pow``: Power-law scaling factor for the specified `param_name` scaling.
+
+      - Type: ``list``
+      - Example:
+
+        .. code-block:: yaml
+
+          theta_E_scale_pow: [1]
+
+    - Combining all of the above, a specified parameter, :math:`p`, is scaled from the sampled scale factor, :math:`f_p`, and sampled power-law index, :math:`\alpha_p`, as:
+
+      .. math::
+
+        p \rightarrow p_{\mathrm{scaled}} =
+        f_p \, p^{\alpha_p}
 
 Guess Parameters
 ----------------
@@ -423,7 +540,7 @@ Guess Parameters
 Numeric Options
 ---------------
 
-- ``numeric_option``: Numerical settings for the modeling process.
+- ``numeric_options``: Numerical settings for the modeling process.
 
   - Suboptions:
 
@@ -434,7 +551,7 @@ Numeric Options
 
         .. code-block:: yaml
 
-           numeric_option:
+           numeric_options:
              supersampling_factor: [2]
 
 Fitting Options
@@ -713,17 +830,30 @@ Fitting Options
 
 Lenstronomy Arbitrary Keyword Arguments
 ---------------------------------------
+Model Options
+-------------
 
 - ``kwargs_model``: *(Optional)* Pass any arbitrary arguments strictly allowed in `lenstronomy.LensModel`, `lenstronomy.LightModel` inside this section.
+- ``model_options`` (or ``kwargs_model``): *(Optional)* Pass any arbitrary arguments strictly allowed in `lenstronomy.Util.class_creator.create_class_instances()` inside this section.
 
 - ``kwargs_constraints``: *(Optional)* Pass any arbitrary constraints strictly allowed in `lenstronomy.Workflow.fitting_sequence` inside this section.
+Constraints Options
+-------------------
+
+- ``constraints_options`` (or ``kwargs_constraints``): *(Optional)* Pass any arbitrary constraints strictly allowed in `lenstronomy.Sampling.parameters.Param()` inside this section.
 
   - Example:
 
     .. code-block:: yaml
 
        kwargs_constraints:
+       constraints_options:
          joint_lens_with_light: [[0, 0, ['center_x', 'center_y']]]
+
+Likelihood Options
+------------------
+
+- ``likelihood_options`` (or ``kwargs_likelihood``): *(Optional)* Pass any arbitrary likelihood arguments strictly allowed in `lenstronomy.Sampling.likelihood.Likelihood()` inside this section.
 
 Mask Options
 ------------
