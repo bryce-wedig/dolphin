@@ -95,6 +95,17 @@ class FileSystem(object):
         outputs_dir = self.path2str(self._root_path / "outputs")
         return outputs_dir
 
+    def create_outputs_directory(self):
+        """Create the outputs directory if it does not exist already.
+
+        :return: path to the `outputs` folder
+        :rtype: `str`
+        """
+        outputs_dir = self.get_outputs_directory()
+        Path(outputs_dir).mkdir(parents=True, exist_ok=True)
+
+        return outputs_dir
+
     def get_data_directory(self):
         """Get the path to the data directory.
 

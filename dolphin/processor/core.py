@@ -67,6 +67,9 @@ class Processor(object):
         """
         pool = choose_pool(mpi=mpi)
 
+        if pool.is_master():
+            self.file_system.create_outputs_directory()
+
         if log and pool.is_master():
             log_file = open(
                 self.file_system.get_log_file_path(lens_name, model_id), "wt"

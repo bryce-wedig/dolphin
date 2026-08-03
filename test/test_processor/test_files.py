@@ -63,6 +63,20 @@ class TestFileSystem(object):
 
         assert Path(self.file_system.get_outputs_directory()) == outputs_dir
 
+    def test_create_outputs_directory(self, tmp_path):
+        """Test `create_outputs_directory` method."""
+        # the directory is created when it does not exist yet
+        file_system = FileSystem(tmp_path)
+        outputs_dir = Path(file_system.create_outputs_directory())
+
+        assert outputs_dir == tmp_path.resolve() / "outputs"
+        assert outputs_dir.is_dir()
+
+        # calling it again on an existing directory is a no-op
+        file_system.create_outputs_directory()
+
+        assert outputs_dir.is_dir()
+
     def test_get_data_directory(self):
         """Test `get_data_directory` method."""
         data_dir = _TEST_IO_DIR / "data"
