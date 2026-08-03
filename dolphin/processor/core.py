@@ -29,7 +29,6 @@ class Processor(object):
         """
         self.io_directory = io_directory
         self.file_system = FileSystem(io_directory)
-        self.lens_list = self.file_system.get_lens_list()
 
     def swim(
         self,
