@@ -204,6 +204,90 @@ class TestRecipe(object):
 
         fitting_sequence.fit_sequence(fitting_kwargs_list)
 
+    @staticmethod
+    def _get_kwargs_data_joint():
+        """Create a minimal `kwargs_data_joint` for recipe generation."""
+        image = np.random.normal(size=(120, 120))
+        return {
+            "multi_band_list": [
+                [
+                    {
+                        "image_data": image,
+                        "background_rms": 0.01,
+                        "exposure_time": np.ones_like(image),
+                        "ra_at_xy_0": 0.0,
+                        "dec_at_xy_0": 0.0,
+                        "transform_pix2angle": np.array([[-0.01, 0], [0, 0.01]]),
+                    },
+                    {},
+                    {},
+                ]
+            ],
+            "multi_band_type": "multi-linear",
+        }
+
+    @staticmethod
+    def _get_lens_fixed_params_at_pso(fitting_kwargs_list):
+        """Track, for each PSO step in a fitting sequence, which lens parameters are
+        fixed at that point.
+
+        :param fitting_kwargs_list: a sequence of fitting operations
+        :type fitting_kwargs_list: `list`
+        :return: one {model index: set of fixed parameters} dict per PSO step
+        :rtype: `list`
+        """
+        fixed = {}
+        fixed_at_pso = []
+
+        for step in fitting_kwargs_list:
+            if step[0] == "update_settings":
+                for index, params, *_ in step[1].get("lens_add_fixed", []):
+                    fixed.setdefault(index, set()).update(params)
+                for index, params, *_ in step[1].get("lens_remove_fixed", []):
+                    fixed.setdefault(index, set()).difference_update(params)
+            elif step[0] == "PSO":
+                fixed_at_pso.append({i: set(p) for i, p in fixed.items()})
+
+        return fixed_at_pso
+
+    def test_get_galaxy_galaxy_recipe_without_external_shear(self):
+        """Test that `get_galaxy_galaxy_recipe` optimizes the central deflector when the
+        lens model list contains no external shear."""
+        config = deepcopy(self.config)
+        config.settings["model"]["lens"] = ["EPL"]
+
+        recipe = Recipe(config)
+        assert recipe._get_external_shear_model_index() is None
+
+        fitting_kwargs_list = recipe.get_galaxy_galaxy_recipe(
+            self._get_kwargs_data_joint()
+        )
+        fixed_at_pso = self._get_lens_fixed_params_at_pso(fitting_kwargs_list)
+
+        assert any(
+            not {"theta_E", "e1", "e2"} & fixed.get(0, set()) for fixed in fixed_at_pso
+        ), "the central deflector is fixed during every PSO"
+
+    def test_get_galaxy_galaxy_recipe_with_external_shear(self):
+        """Test that `get_galaxy_galaxy_recipe` optimizes the central deflector while
+        keeping the external shear pinned during PSO."""
+        shear_index = self.recipe._get_external_shear_model_index()
+        assert shear_index is not None
+
+        fitting_kwargs_list = self.recipe.get_galaxy_galaxy_recipe(
+            self._get_kwargs_data_joint()
+        )
+        fixed_at_pso = self._get_lens_fixed_params_at_pso(fitting_kwargs_list)
+
+        assert any(
+            not {"theta_E", "e1", "e2"} & fixed.get(0, set()) for fixed in fixed_at_pso
+        ), "the central deflector is fixed during every PSO"
+
+        assert all(
+            {"gamma_ext", "psi_ext"} <= fixed.get(shear_index, set())
+            for fixed in fixed_at_pso
+        ), "the external shear is free during a PSO"
+
     def test_get_arc_mask(self):
         """Test `get_arc_mask` method."""
         image = np.random.normal(size=(100, 100))

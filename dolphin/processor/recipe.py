@@ -398,10 +398,13 @@ class Recipe(object):
                 ]
 
                 # unfix the central deflector parameters, keep beta fixed
-                fitting_kwargs_list += [
-                    self.unfix_params("lens"),
-                    self.fix_params("lens", external_shear_model_index),
-                ]
+                fitting_kwargs_list += [self.unfix_params("lens")]
+
+                # keep the external shear pinned during PSO, if there is one
+                if external_shear_model_index is not None:
+                    fitting_kwargs_list += [
+                        self.fix_params("lens", external_shear_model_index)
+                    ]
 
                 # optimize for lens and source together, fix power-law gamma to
                 # 2, as all the lens parameters are unfixed
