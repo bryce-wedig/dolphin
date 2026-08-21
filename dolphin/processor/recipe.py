@@ -9,6 +9,11 @@ import numpy as np
 from scipy import ndimage
 
 
+"""Default scaling of the PSO seeding box relative to the per-parameter sigmas. 
+Overridable per lens with `fitting.pso_settings.sigma_scale:`."""
+DEFAULT_PSO_SIGMA_SCALE = 1.0
+
+
 class Recipe(object):
     """This class contains methods to create fitting recipes.
 
@@ -39,6 +44,9 @@ class Recipe(object):
             self._pso_num_iteration = self._config.settings["fitting"]["pso_settings"][
                 "num_iteration"
             ]
+            self._pso_sigma_scale = self._config.settings["fitting"][
+                "pso_settings"
+            ].get("sigma_scale", DEFAULT_PSO_SIGMA_SCALE)
 
             if self.do_pso is None:
                 self.do_pso = False
@@ -331,7 +339,7 @@ class Recipe(object):
                     [
                         "PSO",
                         {
-                            "sigma_scale": 1.0,
+                            "sigma_scale": self._pso_sigma_scale,
                             "n_particles": self._pso_num_particle,
                             "n_iterations": self._pso_num_iteration,
                             "threadCount": self._thread_count,
@@ -381,7 +389,7 @@ class Recipe(object):
                     [
                         "PSO",
                         {
-                            "sigma_scale": 1.0,
+                            "sigma_scale": self._pso_sigma_scale,
                             "n_particles": self._pso_num_particle,
                             "n_iterations": self._pso_num_iteration,
                             "threadCount": self._thread_count,
@@ -409,7 +417,7 @@ class Recipe(object):
                     [
                         "PSO",
                         {
-                            "sigma_scale": 1.0,
+                            "sigma_scale": self._pso_sigma_scale,
                             "n_particles": self._pso_num_particle,
                             "n_iterations": self._pso_num_iteration,
                             "threadCount": self._thread_count,
@@ -431,7 +439,7 @@ class Recipe(object):
                     [
                         "PSO",
                         {
-                            "sigma_scale": 1.0,
+                            "sigma_scale": self._pso_sigma_scale,
                             "n_particles": self._pso_num_particle,
                             "n_iterations": self._pso_num_iteration,
                             "threadCount": self._thread_count,
@@ -441,7 +449,7 @@ class Recipe(object):
                     [
                         "PSO",
                         {
-                            "sigma_scale": 1.0,
+                            "sigma_scale": self._pso_sigma_scale,
                             "n_particles": self._pso_num_particle,
                             "n_iterations": self._pso_num_iteration,
                             "threadCount": self._thread_count,
