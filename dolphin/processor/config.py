@@ -1275,7 +1275,7 @@ class ModelConfig(Config):
             elif model == "SHEAR_GAMMA_PSI":
                 fixed.append({"ra_0": 0, "dec_0": 0})
                 init.append({"gamma_ext": 0.05, "psi_ext": 0.0})
-                sigma.append({"gamma_ext": 0.05, "psi_ext": np.pi / 90.0})
+                sigma.append({"gamma_ext": 0.05, "psi_ext": np.pi})
                 lower.append({"gamma_ext": 0.0, "psi_ext": -np.pi})
                 upper.append({"gamma_ext": 0.5, "psi_ext": np.pi})
             elif model == "SIS":
