@@ -8,6 +8,16 @@ from copy import deepcopy
 import numpy as np
 from scipy import ndimage
 
+# radius (arcsec) of the region kept clear at the image center in `get_arc_mask`
+# when no Einstein radius guess is available
+DEFAULT_CLEAR_CENTER = 0.4
+# when an Einstein radius guess is available, the clear center is scaled to this
+# multiple of it, so that it stays inside the arcs for small lenses as well
+CLEAR_CENTER_THETA_E_FACTOR = 0.5
+# ... but never smaller than this many pixels, below which the arc finder starts
+# marking the deflector's own light as arc
+CLEAR_CENTER_MIN_PIXELS = 2
+
 
 """Default scaling of the PSO seeding box relative to the per-parameter sigmas. 
 Overridable per lens with `fitting.pso_settings.sigma_scale:`."""
@@ -471,14 +481,63 @@ class Recipe(object):
 
         return fitting_kwargs_list
 
-    def get_arc_mask(self, image, clear_center=0.4, mask=None):
+    def get_theta_E_guess(self):
+        """Get the initial guess for the central deflector's Einstein radius, if
+        provided in the settings.
+
+        :return: Einstein radius guess in arcsec, or `None` if not provided
+        :rtype: `float` or `None`
+        """
+        try:
+            initial_guesses = self._config.settings["lens_options"]["initial_guesses"]
+            for _, params in sorted(initial_guesses.items()):
+                if "theta_E" in params:
+                    return float(params["theta_E"])
+        except (AttributeError, KeyError, TypeError):
+            pass
+
+        return None
+
+    def get_clear_center(self):
+        """Get the radius of the central region that `get_arc_mask` keeps clear.
+
+        The value is taken from the `mask: clear_center:` setting, if provided.
+        Otherwise, it is scaled to the Einstein radius guess (capped at
+        `DEFAULT_CLEAR_CENTER`, so that it can only shrink relative to the previous
+        behavior, and floored at `CLEAR_CENTER_MIN_PIXELS` pixels). If no Einstein
+        radius guess is provided either, it falls back to `DEFAULT_CLEAR_CENTER`.
+
+        :return: radius of the central region to **not** mask, in arcsec
+        :rtype: `float`
+        """
+        try:
+            clear_center = self._config.settings["mask"]["clear_center"]
+        except (KeyError, TypeError):
+            clear_center = None
+
+        if clear_center is not None:
+            return float(clear_center)
+
+        theta_E = self.get_theta_E_guess()
+
+        if theta_E is None:
+            return DEFAULT_CLEAR_CENTER
+
+        return max(
+            CLEAR_CENTER_MIN_PIXELS * np.max(self._config.pixel_size),
+            min(DEFAULT_CLEAR_CENTER, CLEAR_CENTER_THETA_E_FACTOR * theta_E),
+        )
+
+    def get_arc_mask(self, image, clear_center=None, mask=None):
         """Create a mask for lensed galaxy arcs from the image of the lens. The lens
         galaxy is required to be close to the center (within a few pixels) of the image.
 
         :param image: image of the lensing system
         :type image: `numpy.ndarray`
-        :param clear_center: radius of the central region to **not** mask
-        :type clear_center: `float`
+        :param clear_center: radius of the central region to **not** mask. If `None`,
+            it is taken from the settings through `get_clear_center()`, which scales
+            it to the Einstein radius guess when one is provided.
+        :type clear_center: `float` or `None`
         :param mask: a mask to multiply with the arc mask. If the central
             region is masked out in `mask`, then a circle with radius
             `clear_center` will be unmasked.
@@ -486,6 +545,11 @@ class Recipe(object):
         :return: mask for the lensed galaxy arcs
         :rtype: `numpy.ndarray`
         """
+        if clear_center is None:
+            clear_center = self.get_clear_center()
+
+        clear_center_pixels = int(clear_center / np.max(self._config.pixel_size))
+
         # take x- and y- gradient of the image
         x_diff = np.diff(image, axis=1)[1:, :]
         y_diff = np.diff(image, axis=0)[:, 1:]
@@ -510,7 +574,7 @@ class Recipe(object):
         radial_gradient = 1 - radial_gradient
 
         # unmark any marked pixels from the central region
-        radial_gradient[r < int(clear_center / np.max(self._config.pixel_size))] = 0
+        radial_gradient[r < clear_center_pixels] = 0
 
         # remove connected regions with area less than 5 pixels to remove
         # masked regions created by noise
@@ -558,7 +622,7 @@ class Recipe(object):
             )
             r = np.sqrt(x * x + y * y)
 
-            arc_mask[r < int(clear_center / np.max(self._config.pixel_size))] = 1
+            arc_mask[r < clear_center_pixels] = 1
 
         return arc_mask
 
