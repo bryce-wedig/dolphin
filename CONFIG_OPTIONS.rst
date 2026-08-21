@@ -646,6 +646,21 @@ Fitting Options
 
                num_iteration: 50
 
+        - ``sigma_scale``: *(Optional)* Scaling of the box the particle swarm is
+          seeded in, relative to the per-parameter ``sigma`` values. The swarm starts
+          uniformly within ``init +/- sigma * sigma_scale`` (clipped to the hard bounds),
+          and the swarm's spatial scale never grows beyond that box, so this controls
+          how much of the allowed parameter space the optimization can reach. Used by
+          the ``galaxy-galaxy`` recipe; the ``galaxy-quasar`` recipe sets its own
+          per-stage scaling. Defaults to ``1.0``.
+
+          - Type: ``float``
+          - Example:
+
+            .. code-block:: yaml
+
+               sigma_scale: 1.0
+
     - ``sampling``: *(Optional)* Whether to perform sampling after optimization.
 
       - Type: ``boolean``
