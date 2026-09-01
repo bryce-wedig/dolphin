@@ -293,6 +293,11 @@ class FileSystem(object):
                         results_group.create_dataset(
                             "log_l", data=np.array(single_output[6]["log_l"])
                         )
+                elif single_output[0] == "optax":
+                    # the gradient descent step returns the best-fit kwargs, not a chain
+                    subgroup.attrs["kwargs_result"] = json.dumps(
+                        self.encode_numpy_arrays(single_output[1]), ensure_ascii=False
+                    )
                 else:
                     warn(
                         f"Fitting type {single_output[0]} not recognized for saving output!"
@@ -416,6 +421,12 @@ class FileSystem(object):
                             "log_l": group[index]["results_object"]["log_l"][()],
                         }
                         fitting_step.append(results_object)
+                elif fitting_step[0] == "optax":
+                    fitting_step.append(
+                        self.decode_numpy_arrays(
+                            json.loads(str(group[index].attrs["kwargs_result"]))
+                        )
+                    )
 
                 fit_output.append(fitting_step)
 
