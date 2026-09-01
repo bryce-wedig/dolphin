@@ -661,6 +661,87 @@ Fitting Options
 
                sigma_scale: 1.0
 
+    - ``gradient_descent``: *(Optional)* Whether to use gradient descent instead of
+      PSO for the pre-sampling optimization. When turned on, every PSO step of the
+      ``galaxy-quasar`` and ``galaxy-galaxy`` recipes is replaced by a gradient
+      descent step, keeping the recipe's staged sequence of fixed and free
+      parameters. If both ``pso`` and ``gradient_descent`` are ``true``, gradient
+      descent takes precedence.
+
+      Gradient descent uses JAXtronomy's Optax L-BFGS minimizer, which differentiates
+      the likelihood with JAX. It therefore requires ``Processor.swim(...,
+      use_jax=True)`` and the ``jax``, ``jaxtronomy``, ``optax`` and ``numpyro``
+      packages, which are not installed with ``dolphin``. A helpful exception is
+      raised if any of them are missing. Defaults to ``false``.
+
+      - Type: ``boolean``
+      - Example:
+
+        .. code-block:: yaml
+
+           gradient_descent: true
+
+    - ``gradient_descent_settings``: *(Optional)* Settings for the gradient descent
+      optimizer. For full documentation of the parameters, refer to the ``optax``
+      method of `JAXtronomy's FittingSequence
+      <https://github.com/lenstronomy/JAXtronomy>`_.
+
+      - Suboptions:
+
+        - ``maxiter``: Maximum number of gradient descent iterations per chain.
+          Defaults to ``500``.
+
+          - Type: ``integer``
+          - Example:
+
+            .. code-block:: yaml
+
+               maxiter: 1000
+
+        - ``num_chains``: Number of minimization chains to run. Each chain starts
+          from a different point drawn from the prior distribution, so running more
+          chains costs more time but helps avoid local minima. Defaults to ``1``.
+
+          - Type: ``integer``
+          - Example:
+
+            .. code-block:: yaml
+
+               num_chains: 4
+
+        - ``tolerance``: Convergence tolerance. A chain stops when
+          ``|logL[i] - logL[i-1]| < tolerance`` three times in a row. Defaults to
+          ``0.01``.
+
+          - Type: ``float``
+          - Example:
+
+            .. code-block:: yaml
+
+               tolerance: 0.01
+
+        - ``sigma_scale``: Scaling of the distribution the starting points are drawn
+          from, relative to the per-parameter ``sigma`` values. Defaults to ``1.0``.
+          Used by the ``galaxy-galaxy`` recipe; the ``galaxy-quasar`` recipe sets its
+          own per-stage scaling.
+
+          - Type: ``float``
+          - Example:
+
+            .. code-block:: yaml
+
+               sigma_scale: 1.0
+
+        - ``rng_seed``: Seed used to draw the starting point of each chain from the
+          prior distribution. Defaults to ``null``, which draws a random seed.
+
+          - Type: ``integer``
+          - Example:
+
+            .. code-block:: yaml
+
+               rng_seed: 1
+
     - ``sampling``: *(Optional)* Whether to perform sampling after optimization.
 
       - Type: ``boolean``

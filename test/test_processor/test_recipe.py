@@ -8,6 +8,7 @@ import numpy.testing as npt
 from copy import deepcopy
 from lenstronomy.Workflow.fitting_sequence import FittingSequence
 
+from dolphin.processor import recipe as recipe_module
 from dolphin.processor.config import ModelConfig
 from dolphin.processor.recipe import Recipe
 
@@ -30,6 +31,12 @@ class TestRecipe(object):
     def teardown_class(cls):
         pass
 
+    @pytest.fixture
+    def skip_gradient_descent_dependency_check(self, monkeypatch):
+        """Turn the gradient descent dependency check into a no-op, so that the
+        recipe-building logic can be tested without the JAX stack installed."""
+        monkeypatch.setattr(recipe_module, "GRADIENT_DESCENT_PACKAGES", ())
+
     def test_init(self):
         """Test `__init__` method."""
         config = deepcopy(self.config)
@@ -49,6 +56,62 @@ class TestRecipe(object):
         assert recipe.do_sampling is False
         assert recipe.do_pso is False
         assert recipe.reconstruct_psf is False
+
+    def test_init_gradient_descent(self, skip_gradient_descent_dependency_check):
+        """Test that `__init__` reads the gradient descent settings."""
+        config = deepcopy(self.config)
+
+        # not requested at all
+        assert Recipe(config).do_gradient_descent is False
+        assert Recipe(config).do_optimization is True
+
+        config.settings["fitting"]["gradient_descent"] = None
+        assert Recipe(config).do_gradient_descent is False
+
+        # requested, but without any settings given
+        config.settings["fitting"]["gradient_descent"] = True
+        config.settings["fitting"]["gradient_descent_settings"] = None
+        recipe = Recipe(config)
+        assert recipe.do_gradient_descent is True
+        assert (
+            recipe._gradient_descent_settings
+            == recipe_module.DEFAULT_GRADIENT_DESCENT_SETTINGS
+        )
+
+        # given settings are merged over the defaults
+        config.settings["fitting"]["gradient_descent_settings"] = {"maxiter": 42}
+        recipe = Recipe(config)
+        assert recipe._gradient_descent_settings["maxiter"] == 42
+        assert (
+            recipe._gradient_descent_settings["num_chains"]
+            == recipe_module.DEFAULT_GRADIENT_DESCENT_SETTINGS["num_chains"]
+        )
+
+        # gradient descent alone is enough to run an optimization recipe
+        config.settings["fitting"]["pso"] = False
+        del config.settings["fitting"]["pso_settings"]
+        recipe = Recipe(config)
+        assert recipe.do_pso is False
+        assert recipe.do_optimization is True
+
+    def test_init_gradient_descent_missing_dependencies(self, monkeypatch):
+        """Test that a missing gradient descent dependency raises a helpful
+        exception."""
+        monkeypatch.setattr(
+            recipe_module,
+            "GRADIENT_DESCENT_PACKAGES",
+            ("numpy", "not_an_installed_package"),
+        )
+
+        config = deepcopy(self.config)
+        config.settings["fitting"]["gradient_descent"] = True
+
+        with pytest.raises(ImportError, match="not_an_installed_package"):
+            Recipe(config)
+
+        # the check is only made when gradient descent is requested
+        config.settings["fitting"]["gradient_descent"] = False
+        assert Recipe(config).do_gradient_descent is False
 
     def test_get_recipe(self):
         """Test `get_recipe` method."""
@@ -203,6 +266,84 @@ class TestRecipe(object):
         )
 
         fitting_sequence.fit_sequence(fitting_kwargs_list)
+
+    def test_get_optimization_step(self, skip_gradient_descent_dependency_check):
+        """Test that `_get_optimization_step` emits a PSO step by default and a
+        gradient descent step when gradient descent is turned on."""
+        step = self.recipe._get_optimization_step()
+        assert step[0] == "PSO"
+        assert step[1]["sigma_scale"] == 1.0
+        assert step[1]["n_particles"] == 2
+
+        assert (
+            self.recipe._get_optimization_step(sigma_scale=0.1)[1]["sigma_scale"] == 0.1
+        )
+
+        config = deepcopy(self.config)
+        config.settings["fitting"]["gradient_descent"] = True
+        config.settings["fitting"]["gradient_descent_settings"] = {
+            "maxiter": 3,
+            "num_chains": 2,
+            "tolerance": 0.5,
+            "rng_seed": 7,
+        }
+        recipe = Recipe(config)
+
+        step = recipe._get_optimization_step()
+        assert step == [
+            "optax",
+            {
+                "maxiter": 3,
+                "num_chains": 2,
+                "tolerance": 0.5,
+                "sigma_scale": 1.0,
+                "rng_seed": 7,
+            },
+        ]
+        # `optax` takes no thread count, unlike the PSO
+        assert "threadCount" not in step[1]
+
+        assert recipe._get_optimization_step(sigma_scale=0.1)[1]["sigma_scale"] == 0.1
+
+    def test_recipes_with_gradient_descent(
+        self, skip_gradient_descent_dependency_check
+    ):
+        """Test that gradient descent replaces the PSO steps of both recipes."""
+        config = deepcopy(self.config)
+        config.settings["fitting"]["gradient_descent"] = True
+        config.settings["fitting"]["gradient_descent_settings"] = {"maxiter": 3}
+        recipe = Recipe(config)
+
+        fitting_kwargs_list = recipe.get_galaxy_quasar_recipe()
+        assert [step[0] for step in fitting_kwargs_list].count("PSO") == 0
+        # the per-stage sigma scaling of the recipe is kept
+        assert [
+            step[1]["sigma_scale"] for step in fitting_kwargs_list if step[0] == "optax"
+        ] == [1.0, 0.1, 0.1] * 2
+
+        fitting_kwargs_list = recipe.get_galaxy_galaxy_recipe(
+            self._get_kwargs_data_joint()
+        )
+        fitting_types = [step[0] for step in fitting_kwargs_list]
+        assert fitting_types.count("PSO") == 0
+        assert fitting_types.count("optax") == 10
+        for step in fitting_kwargs_list:
+            if step[0] == "optax":
+                assert step[1]["maxiter"] == 3
+
+        # the recipes run with gradient descent alone, without any PSO settings
+        config.settings["fitting"]["pso"] = False
+        del config.settings["fitting"]["pso_settings"]
+        recipe = Recipe(config)
+        assert len(recipe.get_galaxy_quasar_recipe()) > 0
+        assert len(recipe.get_galaxy_galaxy_recipe(self._get_kwargs_data_joint())) > 0
+
+        # ... and neither recipe produces optimization steps if both are turned off
+        config.settings["fitting"]["gradient_descent"] = False
+        recipe = Recipe(config)
+        assert recipe.do_optimization is False
+        assert recipe.get_galaxy_quasar_recipe() == []
+        assert recipe.get_galaxy_galaxy_recipe(self._get_kwargs_data_joint()) == []
 
     @staticmethod
     def _get_kwargs_data_joint():

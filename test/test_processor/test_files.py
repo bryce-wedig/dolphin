@@ -158,6 +158,13 @@ class TestFileSystem(object):
                         "log_l": np.ones(50),
                     },
                 ],
+                [
+                    "optax",
+                    {
+                        "kwargs_lens": [{"theta_E": 1.2, "e1": np.array(0.05)}],
+                        "kwargs_source": [{"R_sersic": np.ones(2)}],
+                    },
+                ],
             ],
             "multi_band_list_out": ["band1", "band2"],
         }
@@ -190,6 +197,22 @@ class TestFileSystem(object):
         assert np.all(out_nautilus[5] == save_nautilus[5])
         for key in save_nautilus[6]:
             assert np.all(out_nautilus[6][key] == save_nautilus[6][key])
+
+        out_optax = out["fit_output"][3]
+        save_optax = save_dict["fit_output"][3]
+        assert out_optax[0] == "optax"
+        assert (
+            out_optax[1]["kwargs_lens"][0]["theta_E"]
+            == save_optax[1]["kwargs_lens"][0]["theta_E"]
+        )
+        assert np.all(
+            out_optax[1]["kwargs_lens"][0]["e1"]
+            == save_optax[1]["kwargs_lens"][0]["e1"]
+        )
+        assert np.all(
+            out_optax[1]["kwargs_source"][0]["R_sersic"]
+            == save_optax[1]["kwargs_source"][0]["R_sersic"]
+        )
 
         with pytest.warns(UserWarning):
             save_dict["fit_output"].append(

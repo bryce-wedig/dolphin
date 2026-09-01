@@ -62,7 +62,9 @@ class Processor(object):
             kwargs_source, kwargs_lens_light, kwargs_ps, kwargs_special, kwargs_extinction, kwargs_tracer_source
             and outputs a float. If use_jax is also True, this function must be compatible with jax.jit
         :type custom_logL_addition: callable function
-        :param use_jax: if `True`, performs modeling through JAXtronomy instead of lenstronomy
+        :param use_jax: if `True`, performs modeling through JAXtronomy instead of lenstronomy.
+            Required if gradient descent is turned on in the settings, as the gradient descent
+            optimizer is only available through JAXtronomy.
         :type use_jax: `bool`
         :return: None
         :rtype: `None`
@@ -77,6 +79,13 @@ class Processor(object):
 
         config = self.get_lens_config(lens_name)
         recipe = Recipe(config, thread_count=thread_count)
+
+        if recipe.do_gradient_descent and not use_jax:
+            raise ValueError(
+                "Gradient descent (`fitting: gradient_descent:`) is only available "
+                "through JAXtronomy. Call Processor.swim(..., use_jax=True) or turn "
+                "off gradient descent in the settings file."
+            )
 
         psf_supersampling_factor = config.get_psf_supersampled_factor()
         kwargs_data_joint = self.get_kwargs_data_joint(
