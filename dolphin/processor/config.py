@@ -420,7 +420,11 @@ class ModelConfig(Config):
 
         num_lens_light_profile_central = len(self.settings["model"]["lens_light"])
 
-        if num_lens_light_profile_central > 1:
+        # This loop does double duty: it ties sibling profiles within a band to a
+        # common centroid and ties each band's copy back to band 0. The guard is
+        # on the length of the full model list, so a single profile observed in
+        # multiple bands is joined as well.
+        if num_lens_light_profile_central * self.number_of_bands > 1:
             for n in range(1, num_lens_light_profile_central * self.number_of_bands):
                 if lens_light_model_list[n] != "UNIFORM":
                     joint_lens_light_with_lens_light.append(
@@ -437,13 +441,6 @@ class ModelConfig(Config):
                     join_list = ["n_sersic"]
                     if "ELLIPSE" in model:
                         join_list += ["e1", "e2"]
-                    joint_lens_light_with_lens_light.append(
-                        [
-                            i,
-                            i + num_lens_light_profile_central,
-                            join_list,
-                        ]
-                    )
                 # MGE_SET and MGE_SET_ELLIPSE parameters
                 elif "MGE_SET" in model:
                     # The sigmas set the scale of the Gaussians
@@ -452,10 +449,15 @@ class ModelConfig(Config):
                     if "ELLIPSE" in model:
                         # For MGE_SET_ELLIPSE, join ellipticities as well
                         join_list += ["e1", "e2"]
+                else:
+                    continue
+
+                # join band 0's profile with its copy in every other band
+                for band in range(1, self.number_of_bands):
                     joint_lens_light_with_lens_light.append(
                         [
                             i,
-                            i + num_lens_light_profile_central,
+                            i + band * num_lens_light_profile_central,
                             join_list,
                         ]
                     )
@@ -486,7 +488,8 @@ class ModelConfig(Config):
         :rtype: `tuple` (`list`, `int`)
         """
         joint_source_with_source = []
-        num_source_profiles = len(self.get_source_light_model_list())
+        source_light_model_list = self.get_source_light_model_list()
+        num_source_profiles = len(source_light_model_list)
 
         if num_source_profiles > 1:
             for n in range(1, num_source_profiles):
@@ -498,18 +501,20 @@ class ModelConfig(Config):
             num_source_profile_single_band = int(num_source_profiles / num_bands)
 
             for i in range(num_source_profile_single_band):
-                model = self.get_source_light_model_list()[i]
+                model = source_light_model_list[i]
                 if "SERSIC" in model:
                     join_list = ["n_sersic"]
                     if "ELLIPSE" in model:
                         join_list += ["e1", "e2"]
-                    joint_source_with_source.append(
-                        [
-                            i,
-                            i + num_source_profile_single_band,
-                            join_list,
-                        ]
-                    )
+                    # join band 0's profile with its copy in every other band
+                    for band in range(1, num_bands):
+                        joint_source_with_source.append(
+                            [
+                                i,
+                                i + band * num_source_profile_single_band,
+                                join_list,
+                            ]
+                        )
 
         return joint_source_with_source, num_source_profiles
 

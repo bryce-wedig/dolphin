@@ -1168,6 +1168,67 @@ class TestModelConfig(object):
                 assert "e1" not in entry[2]
                 assert "e2" not in entry[2]
 
+    def _make_three_band_config(self, lens_light=None, source_light=None):
+        """Return a copy of `config_3` with three bands and the given profiles."""
+        config = deepcopy(self.config_3)
+        config.settings["band"] = ["F475X", "F600LP", "F814W"]
+        if lens_light is not None:
+            config.settings["model"]["lens_light"] = lens_light
+        if source_light is not None:
+            config.settings["model"]["source_light"] = source_light
+        return config
+
+    def test_get_joint_lens_light_single_profile_multiband(self):
+        """Test that a single lens light profile is joined across all bands."""
+        for lens_light, shape_params in [
+            (["MGE_SET_ELLIPSE"], ["sigma_min", "sigma_width", "e1", "e2"]),
+            (["SERSIC_ELLIPSE"], ["n_sersic", "e1", "e2"]),
+        ]:
+            config = self._make_three_band_config(lens_light=lens_light)
+            constraints = config.get_joint_lens_light_with_lens_light()
+
+            # centroids are shared by the band 1 and band 2 copies
+            assert [0, 1, ["center_x", "center_y"]] in constraints
+            assert [0, 2, ["center_x", "center_y"]] in constraints
+
+            # shape parameters reach band 2, not just band 1
+            assert [0, 1, shape_params] in constraints
+            assert [0, 2, shape_params] in constraints
+
+    def test_get_joint_lens_light_multiple_profiles_multiband(self):
+        """Test the cross-band indexing with more than one lens light profile."""
+        config = self._make_three_band_config(
+            lens_light=["SERSIC_ELLIPSE", "SERSIC"],
+        )
+        constraints = config.get_joint_lens_light_with_lens_light()
+
+        # profile i of band b lives at index i + b * num_profiles_per_band
+        assert [0, 2, ["n_sersic", "e1", "e2"]] in constraints
+        assert [0, 4, ["n_sersic", "e1", "e2"]] in constraints
+        assert [1, 3, ["n_sersic"]] in constraints
+        assert [1, 5, ["n_sersic"]] in constraints
+
+    def test_get_joint_source_with_source_multiband(self):
+        """Test that source shape parameters are joined across all bands."""
+        config = self._make_three_band_config(source_light=["SERSIC_ELLIPSE"])
+        constraints, _ = config.get_joint_source_with_source()
+
+        assert [0, 1, ["n_sersic", "e1", "e2"]] in constraints
+        assert [0, 2, ["n_sersic", "e1", "e2"]] in constraints
+
+    def test_get_joint_source_with_source_multiband_shapelets(self):
+        """Test that SHAPELETS profiles are skipped by the cross-band join."""
+        config = self._make_three_band_config(
+            source_light=["SERSIC_ELLIPSE", "SHAPELETS"],
+        )
+        constraints, _ = config.get_joint_source_with_source()
+
+        shape_joins = [entry for entry in constraints if "n_sersic" in entry[2]]
+        assert shape_joins == [
+            [0, 2, ["n_sersic", "e1", "e2"]],
+            [0, 4, ["n_sersic", "e1", "e2"]],
+        ]
+
     def test_custom_logL_addition_mge_set(self):
         """Test that custom_logL_addition skips ellipticity priors for MGE_SET."""
         config = deepcopy(self.config_1)
