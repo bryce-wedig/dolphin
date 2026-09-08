@@ -4,10 +4,13 @@
 from pathlib import Path
 
 import pytest
+import sys
 
 from copy import deepcopy
 
+from dolphin.analysis.output import Output
 from dolphin.processor.core import Processor
+import numpy as np
 import numpy.testing as npt
 
 from generate_galaxy_galaxy_golden import TEST_FITTING_BUDGET
@@ -110,6 +113,53 @@ class TestProcessor(object):
                 log=False,
                 recipe_name="galaxy-galaxy-gradient-descent",
             )
+    def test_swim_mge(self):
+        """Test `swim` method for an MGE lens light model."""
+        self.processor.swim(
+            "lens_system2_mge", "test", log=False, recipe_name="galaxy-galaxy"
+        )
+
+        output = Output(_TEST_IO_DIR)
+        saved = output.load_output("lens_system2_mge", "test", verbose=False)
+        assert saved["use_nn_mge"] is True
+
+        # `best_fit` does not run the linear inversion, so the saved `kwargs_result`
+        # only holds the placeholder amplitudes. The model plot solves for them again.
+        model_plot, _ = output.get_model_plot_instance("lens_system2_mge", "test")
+        kwargs_lens_light = model_plot._band_plot_list[0]._kwargs_lens_light_partial
+        amp = np.atleast_1d(kwargs_lens_light[0]["amp"])
+
+        assert len(amp) == 20
+        assert np.all(amp >= 0)
+
+    def test_swim_mge_without_nn_mge(self):
+        """Test that the unconstrained solver can be selected for an MGE lens light
+        model."""
+        self.processor.swim(
+            "lens_system2_mge",
+            "test",
+            log=False,
+            recipe_name="galaxy-galaxy",
+            use_nn_mge=False,
+        )
+
+        output = Output(_TEST_IO_DIR)
+        saved = output.load_output("lens_system2_mge", "test", verbose=False)
+
+        assert saved["use_nn_mge"] is False
+
+    def test_swim_mge_use_jax(self):
+        """Test that the non-negative MGE solver is not supported by JAXtronomy."""
+        stdout = sys.stdout
+
+        with pytest.raises(NotImplementedError):
+            self.processor.swim("lens_system2_mge", "test", use_jax=True)
+
+        # the exception is raised before the log file replaces the standard output
+        assert sys.stdout is stdout
+
+        with pytest.raises(NotImplementedError):
+            self.processor.swim("lens_system1", "test", use_jax=True, use_nn_mge=True)
 
     def test_get_kwargs_data_joint(self):
         """Test `get_kwargs_data_joint` method."""

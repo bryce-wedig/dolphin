@@ -30,6 +30,7 @@ from lenstronomy.Cosmo.lens_cosmo import LensCosmo
 
 from .data import ImageData
 from .files import FileSystem
+from .nn_mge import MGE_PROFILE_NAMES
 
 
 class Config(object):
@@ -215,6 +216,15 @@ class ModelConfig(Config):
         """
         return len(self.settings["band"])
 
+    @property
+    def has_mge_lens_light(self):
+        """Whether the lens light model contains an MGE profile.
+
+        :return: `True` if the lens light model list has an MGE profile
+        :rtype: `bool`
+        """
+        return any(m in MGE_PROFILE_NAMES for m in self.get_lens_light_model_list())
+
     def _get_mge_n_comp(self, config_index):
         """Get the number of Gaussian components for an MGE_SET model.
 
@@ -257,14 +267,11 @@ class ModelConfig(Config):
         }
 
         # Build `lens_light_profile_kwargs_list` for MGE_SET and MGE_SET_ELLIPSE models
-        if any(
-            m in ["MGE_SET", "MGE_SET_ELLIPSE"]
-            for m in self.get_lens_light_model_list()
-        ):
+        if self.has_mge_lens_light:
             num_central = len(self.settings["model"]["lens_light"])
             profile_kwargs_list = []
             for i, model in enumerate(self.get_lens_light_model_list()):
-                if model in ["MGE_SET", "MGE_SET_ELLIPSE"]:
+                if model in MGE_PROFILE_NAMES:
                     config_index = i % num_central
                     n_comp = self._get_mge_n_comp(config_index)
                     profile_kwargs_list.append({"n_comp": n_comp})
@@ -442,7 +449,7 @@ class ModelConfig(Config):
                     if "ELLIPSE" in model:
                         join_list += ["e1", "e2"]
                 # MGE_SET and MGE_SET_ELLIPSE parameters
-                elif "MGE_SET" in model:
+                elif model in MGE_PROFILE_NAMES:
                     # The sigmas set the scale of the Gaussians
                     # where sigma_min + sigma_width is maximum sigma
                     join_list = ["sigma_min", "sigma_width"]
@@ -530,14 +537,6 @@ class ModelConfig(Config):
         :return: dictionary containing the likelihood configuration
         :rtype: `dict`
         """
-        # MGE models use multiple linear amplitudes per component, and the
-        # unconstrained linear solver can return negative values for some
-        # components.
-        has_mge = any(
-            m in ("MGE_SET", "MGE_SET_ELLIPSE")
-            for m in self.get_lens_light_model_list()
-        )
-
         kwargs_likelihood = {
             "force_no_add_image": False,
             "source_marg": False,
@@ -545,7 +544,11 @@ class ModelConfig(Config):
             # 'position_uncertainty': 0.00004,
             # 'check_solver': False,
             # 'solver_tolerance': 0.001,
-            "check_positive_flux": not has_mge,  # non-MGE: True, MGE: False
+            # MGE models use multiple linear amplitudes per component. The nn-MGE
+            # solver already constrains those amplitudes to be non-negative, so this
+            # check would only cost a redundant linear parameter update per likelihood
+            # evaluation.
+            "check_positive_flux": not self.has_mge_lens_light,
             "check_bounds": True,
             "bands_compute": [True] * self.number_of_bands,
             "image_likelihood_mask_list": self.get_masks(),
@@ -1428,7 +1431,7 @@ class ModelConfig(Config):
                 sigma.append(_sigma)
                 lower.append(_lower)
                 upper.append(_upper)
-            elif model in ["MGE_SET", "MGE_SET_ELLIPSE"]:
+            elif model in MGE_PROFILE_NAMES:
                 _fixed = {}
                 _init = {
                     "amp": 1.0,

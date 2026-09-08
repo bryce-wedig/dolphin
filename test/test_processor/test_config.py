@@ -1259,6 +1259,19 @@ class TestModelConfig(object):
         assert config._get_mge_n_comp(0) == 12
         assert config._get_mge_n_comp(1) == 20  # Not configured, returns default
 
+    def test_has_mge_lens_light(self):
+        """Test the `has_mge_lens_light` property."""
+        assert self.config_1.has_mge_lens_light is False
+
+        for lens_light in [
+            ["MGE_SET"],
+            ["MGE_SET_ELLIPSE"],
+            ["SERSIC_ELLIPSE", "MGE_SET"],
+        ]:
+            config = deepcopy(self.config_1)
+            config.settings["model"]["lens_light"] = lens_light
+            assert config.has_mge_lens_light is True
+
     def test_get_kwargs_likelihood_mge(self):
         """Test `get_kwargs_likelihood` disables `check_positive_flux` for MGE."""
         # Non-MGE config: check_positive_flux is True
