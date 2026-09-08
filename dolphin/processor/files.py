@@ -240,6 +240,9 @@ class FileSystem(object):
             if "jaxtronomy_version" in output:
                 f.attrs["jaxtronomy_version"] = output["jaxtronomy_version"]
 
+            if "use_nn_mge" in output:
+                f.attrs["use_nn_mge"] = output["use_nn_mge"]
+
             group = f.create_group("fit_output")
             for i, single_output in enumerate(output["fit_output"]):
                 subgroup = group.create_group(f"{i}")
@@ -378,6 +381,10 @@ class FileSystem(object):
                 if isinstance(jaxtronomy_version, bytes):
                     jaxtronomy_version = jaxtronomy_version.decode("utf-8")
 
+            use_nn_mge = f.attrs.get("use_nn_mge", None)
+            if use_nn_mge is not None:
+                use_nn_mge = bool(use_nn_mge)
+
             fit_output = []
             group = f["fit_output"]
 
@@ -441,6 +448,9 @@ class FileSystem(object):
 
             if jaxtronomy_version is not None:
                 output["jaxtronomy_version"] = jaxtronomy_version
+
+            if use_nn_mge is not None:
+                output["use_nn_mge"] = use_nn_mge
 
             return output
 

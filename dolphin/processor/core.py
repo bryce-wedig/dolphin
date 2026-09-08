@@ -14,6 +14,7 @@ from .files import FileSystem
 from .config import ModelConfig
 from .data import ImageData
 from .data import PSFData
+from .nn_mge import nn_mge_solver
 from .recipe import Recipe
 
 
@@ -41,6 +42,7 @@ class Processor(object):
         thread_count=1,
         custom_logL_addition=None,
         use_jax=False,
+        use_nn_mge=None,
     ):
         """Run lens modeling optimizations for a single lens system.
 
@@ -66,10 +68,30 @@ class Processor(object):
             Required if gradient descent is turned on in the settings, as the gradient descent
             optimizer is only available through JAXtronomy.
         :type use_jax: `bool`
+        :param use_nn_mge: if `True`, solves the semi-linear inversion with non-negative
+            MGE amplitudes (He et al. 2024). If `None`, this is enabled whenever the lens light
+            model contains an MGE profile. Set to `False` to use lenstronomy's unconstrained
+            solver. Not supported together with `use_jax`.
+        :type use_nn_mge: `bool` or `None`
         :return: None
         :rtype: `None`
         """
         pool = choose_pool(mpi=mpi)
+
+        config = self.get_lens_config(lens_name)
+
+        if use_nn_mge is None:
+            use_nn_mge = config.has_mge_lens_light
+
+        if use_jax and use_nn_mge:
+            raise NotImplementedError(
+                "The non-negative MGE linear solver is implemented for lenstronomy "
+                "only, and it is used by default for a lens light model containing "
+                "'MGE_SET' or 'MGE_SET_ELLIPSE'. Set use_jax=False to model this "
+                "system, or use_nn_mge=False to fall back to JAXtronomy's "
+                "unconstrained weighted-least-squares inversion, which returns "
+                "negative Gaussian amplitudes."
+            )
 
         if log and pool.is_master():
             log_file = open(
@@ -77,7 +99,6 @@ class Processor(object):
             )
             sys.stdout = log_file
 
-        config = self.get_lens_config(lens_name)
         recipe = Recipe(config, thread_count=thread_count)
 
         if recipe.do_gradient_descent and not use_jax:
@@ -117,7 +138,8 @@ class Processor(object):
         )
         print(f"Optimizing model for {lens_name} with recipe: {recipe_name}.")
 
-        fit_output = fitting_sequence.fit_sequence(fitting_kwargs_list)
+        with nn_mge_solver(enabled=use_nn_mge):
+            fit_output = fitting_sequence.fit_sequence(fitting_kwargs_list)
         kwargs_result = fitting_sequence.best_fit(bijective=False)
         multi_band_list_out = fitting_sequence.multi_band_list
 
@@ -128,6 +150,7 @@ class Processor(object):
             "multi_band_list_out": multi_band_list_out,
             "dolphin_version": __version__,
             "lenstronomy_version": _lenstronomy_version,
+            "use_nn_mge": use_nn_mge,
         }
 
         if use_jax:
