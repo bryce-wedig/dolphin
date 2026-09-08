@@ -291,6 +291,15 @@ Lens Light Options
              0:
                n_comp: 20
 
+      - Note: when an MGE profile is used, the Gaussian amplitudes are solved for with a
+        non-negativity constraint, following He et al. 2024 (MNRAS 532, 2441). Without it,
+        the unconstrained solver returns Gaussians with alternating large positive and
+        negative amplitudes that absorb flux from the lensed source. The constraint is applied
+        to the MGE amplitudes only, since the shapelet source basis needs negative
+        coefficients. Pass ``use_nn_mge=False`` to ``Processor.swim()`` to use
+        ``lenstronomy``'s unconstrained solver instead. This solver is not available through
+        JAXtronomy, so ``use_jax=True`` is not supported for MGE lens light models.
+
 Source Light Options
 --------------------
 

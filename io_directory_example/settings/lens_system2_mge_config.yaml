@@ -1,4 +1,4 @@
-lens_name: lens_system2
+lens_name: lens_system2_mge
 
 band: [F390W]
 
@@ -11,7 +11,9 @@ lens_options:
   centroid_init: [0.04, -0.04]
 
 lens_light_options:
-  fix: {0: {n_sersic: 4.}}   # fix n_sersic to 4. for 0-th light profile
+  mge_config:
+    0:
+      n_comp: 20 # number of Gaussian components in the MGE set
 
 source_light_options:
   n_max: [4] # array with n_max for each band
@@ -19,15 +21,10 @@ source_light_options:
 fitting:
   pso: true
   pso_settings:
-    num_particle: 20
-    num_iteration: 50
+    num_particle: 4
+    num_iteration: 2
 
-  sampling: true
-  sampler: emcee
-  sampler_settings: # keywords to be sent to lenstronomy.Workflow.fitting_sequence.FittingSequence.mcmc()
-    n_burn: 0
-    n_run: 100
-    walkerRatio: 2
+  sampling: false
 
 numeric_options:
   supersampling_factor: [2]

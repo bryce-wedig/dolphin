@@ -16,6 +16,7 @@ from lenstronomy.LensModel.lens_model_extensions import LensModelExtensions
 
 from ..processor import Processor
 from ..processor.config import ModelConfig
+from ..processor.nn_mge import nn_mge_solver
 from .. import __version__
 from lenstronomy import __version__ as _lenstronomy_version
 
@@ -273,13 +274,16 @@ class Output(Processor):
 
         v_max = np.log10(multi_band_list_out[band_index][0]["image_data"].max())
 
-        model_plot = ModelPlot(
-            multi_band_list_out,
-            kwargs_model,
-            kwargs_result,
-            image_likelihood_mask_list=mask,
-            multi_band_type="multi-linear",
-        )
+        # `ModelPlot` solves for the linear amplitudes on construction, so it needs the
+        # same solver the fit used.
+        with nn_mge_solver(enabled=config.has_mge_lens_light):
+            model_plot = ModelPlot(
+                multi_band_list_out,
+                kwargs_model,
+                kwargs_result,
+                image_likelihood_mask_list=mask,
+                multi_band_type="multi-linear",
+            )
         return model_plot, v_max
 
     def plot_model_overview(
@@ -830,14 +834,15 @@ class Output(Processor):
         # kwargs_data = multi_band_list_out[band_index][0]
         # kwargs_psf = multi_band_list_out[band_index][1]
 
-        im_sim = create_im_sim(
-            multi_band_list_out,
-            "single-band",
-            kwargs_model,
-            bands_compute=None,
-            image_likelihood_mask_list=(config.get_masks()),
-            band_index=band_index,
-        )
+        with nn_mge_solver(enabled=config.has_mge_lens_light):
+            im_sim = create_im_sim(
+                multi_band_list_out,
+                "single-band",
+                kwargs_model,
+                bands_compute=None,
+                image_likelihood_mask_list=(config.get_masks()),
+                band_index=band_index,
+            )
 
         return im_sim
 
