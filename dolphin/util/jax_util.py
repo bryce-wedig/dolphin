@@ -4,10 +4,13 @@ dolphin modules."""
 
 __author__ = "ahuang"
 
-from jax import config, numpy as jnp
-from jaxtronomy.Util.param_util import ellipticity2phi_q
+from . import enable_jax_x64
 
-config.update("jax_enable_x64", True)
+# has to happen before JAX is imported, hence the import order below
+enable_jax_x64()
+
+from jax import numpy as jnp
+from jaxtronomy.Util.param_util import ellipticity2phi_q
 
 
 def custom_logL_addition_jax(
