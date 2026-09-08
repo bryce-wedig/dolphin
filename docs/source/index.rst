@@ -13,6 +13,7 @@ Contents
 
    quickstart
    config_options
+   galaxy_galaxy_recipe
    contributing
    authors
    modules

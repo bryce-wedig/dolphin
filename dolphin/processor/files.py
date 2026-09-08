@@ -298,6 +298,13 @@ class FileSystem(object):
                     subgroup.attrs["kwargs_result"] = json.dumps(
                         self.encode_numpy_arrays(single_output[1]), ensure_ascii=False
                     )
+                    # per-chain diagnostics, if the JAXtronomy version in use reports
+                    # them: how many iterations each chain ran, the loss and gradient
+                    # norm it ended at, and whether it beat the starting state
+                    if len(single_output) > 2:
+                        subgroup.attrs["chain_diagnostics"] = json.dumps(
+                            single_output[2], ensure_ascii=False
+                        )
                 else:
                     warn(
                         f"Fitting type {single_output[0]} not recognized for saving output!"
@@ -427,6 +434,12 @@ class FileSystem(object):
                             json.loads(str(group[index].attrs["kwargs_result"]))
                         )
                     )
+                    # guarded, so that files saved before the diagnostics existed,
+                    # or by a JAXtronomy version that does not report them, still load
+                    if "chain_diagnostics" in group[index].attrs:
+                        fitting_step.append(
+                            json.loads(str(group[index].attrs["chain_diagnostics"]))
+                        )
 
                 fit_output.append(fitting_step)
 

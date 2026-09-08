@@ -1,0 +1,1672 @@
+{
+  "with_external_shear": [
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ]
+  ],
+  "with_shapelets": [
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ],
+          [
+            1,
+            [
+              "center_x",
+              "center_y",
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ],
+          [
+            1,
+            [
+              "center_x",
+              "center_y",
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            1,
+            [
+              "beta"
+            ],
+            [
+              0.1
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            1,
+            [
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ],
+          [
+            1,
+            [
+              "center_x",
+              "center_y",
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ],
+          [
+            1,
+            [
+              "center_x",
+              "center_y",
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            1,
+            [
+              "beta"
+            ],
+            [
+              0.1
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            1,
+            [
+              "beta"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ],
+          [
+            1,
+            [
+              "gamma_ext",
+              "psi_ext"
+            ]
+          ]
+        ]
+      }
+    ]
+  ],
+  "without_external_shear": [
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "20cec9551e74c744af90ec59411a51d5e6f1eeaf"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "source_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "n_sersic",
+              "center_y",
+              "center_x",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_add_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "kwargs_likelihood": {
+          "image_likelihood_mask_list": [
+            [
+              "ndarray",
+              [
+                120,
+                120
+              ],
+              "8258895236f1e79b761370b1136b764dc08ce147"
+            ]
+          ]
+        }
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2"
+            ],
+            [
+              1.2,
+              0.05,
+              -0.05
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_add_fixed": [
+          [
+            0,
+            [
+              "gamma"
+            ],
+            [
+              2.0
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_light_remove_fixed": [
+          [
+            0,
+            [
+              "R_sersic",
+              "center_x",
+              "center_y",
+              "e1",
+              "e2"
+            ]
+          ]
+        ]
+      }
+    ],
+    [
+      "PSO",
+      {
+        "n_iterations": 2,
+        "n_particles": 2,
+        "sigma_scale": 1.0,
+        "threadCount": 1
+      }
+    ],
+    [
+      "update_settings",
+      {
+        "lens_remove_fixed": [
+          [
+            0,
+            [
+              "theta_E",
+              "e1",
+              "e2",
+              "gamma",
+              "center_x",
+              "center_y"
+            ]
+          ]
+        ]
+      }
+    ]
+  ]
+}

@@ -5,8 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from copy import deepcopy
+
 from dolphin.processor.core import Processor
 import numpy.testing as npt
+
+from generate_galaxy_galaxy_golden import TEST_FITTING_BUDGET
 
 _ROOT_DIR = Path(__file__).resolve().parents[2]
 _TEST_IO_DIR = _ROOT_DIR / "io_directory_example"
@@ -16,24 +20,48 @@ class TestProcessor(object):
     def setup_class(self):
         self.processor = Processor(_TEST_IO_DIR)
 
+    @pytest.fixture
+    def testable_budget(self, monkeypatch):
+        """Cut `lens_system1`'s fitting budget to a testable size.
+
+        `lens_system1_config.yaml` is a worked production example, so running its own
+        swarm and sampler would take these tests from seconds to hours. What they check
+        is that `swim` runs the recipe end to end and writes the output, which a
+        two-particle swarm exercises just as well.
+        """
+        config = self.processor.get_lens_config("lens_system1")
+        config.settings["fitting"].update(deepcopy(TEST_FITTING_BUDGET))
+        monkeypatch.setattr(Processor, "get_lens_config", lambda self, name: config)
+
+        return config
+
     @classmethod
     def teardown_class(cls):
         pass
 
-    def test_swim(self):
+    def test_swim(self, testable_budget):
         """Test `swim` method."""
         self.processor.swim("lens_system1", "test")
 
         self.processor.swim(
             "lens_system1", "test", use_jax=True, recipe_name="galaxy-galaxy"
         )
+
+        # JAX has to compute in 64-bit floats, or the optimizers stall before
+        # reaching the best fit
+        import jax
+
+        assert jax.config.jax_enable_x64 is True
+
+    def test_swim_quasar(self):
+        """Test `swim` method on the galaxy-quasar recipe, which has its own config."""
         self.processor.swim(
             "lensed_quasar", "test", use_jax=True, recipe_name="galaxy-quasar"
         )
 
-    def test_swim_with_gradient_descent(self, monkeypatch):
+    def test_swim_with_gradient_descent(self, monkeypatch, testable_budget):
         """Test `swim` method with the gradient descent optimizer."""
-        config = self.processor.get_lens_config("lens_system1")
+        config = testable_budget
         config.settings["fitting"]["pso"] = False
         config.settings["fitting"]["gradient_descent"] = True
         config.settings["fitting"]["gradient_descent_settings"] = {
@@ -42,8 +70,6 @@ class TestProcessor(object):
             "rng_seed": 1,
         }
         config.settings["fitting"]["sampling"] = False
-
-        monkeypatch.setattr(Processor, "get_lens_config", lambda self, name: config)
 
         # gradient descent is only available through JAXtronomy
         with pytest.raises(ValueError):
@@ -61,8 +87,29 @@ class TestProcessor(object):
             "lens_system1", "test_gradient_descent"
         )
         fitting_types = [step[0] for step in output["fit_output"]]
-        assert fitting_types.count("optax") == 10
+        assert fitting_types.count("optax") == 1
         assert "kwargs_lens" in output["fit_output"][0][1]
+
+        # the per-chain diagnostics survive the round trip through the output file
+        chain_diagnostics = output["fit_output"][0][2]
+        assert chain_diagnostics[0]["chain"] == -1
+        assert chain_diagnostics[1]["warm_start"] is True
+
+    def test_swim_with_gradient_descent_recipe_needs_jax(self, testable_budget):
+        """The gradient descent recipe names imply the optimizer, so they have to be
+        guarded even when the settings file does not turn gradient descent on."""
+        config = testable_budget
+        config.settings["fitting"]["sampling"] = False
+
+        assert config.settings["fitting"].get("gradient_descent") in (None, False)
+
+        with pytest.raises(ValueError, match="galaxy-galaxy-gradient-descent"):
+            self.processor.swim(
+                "lens_system1",
+                "test_gradient_descent_recipe",
+                log=False,
+                recipe_name="galaxy-galaxy-gradient-descent",
+            )
 
     def test_get_kwargs_data_joint(self):
         """Test `get_kwargs_data_joint` method."""

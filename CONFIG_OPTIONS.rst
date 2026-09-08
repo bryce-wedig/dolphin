@@ -662,11 +662,40 @@ Fitting Options
                sigma_scale: 1.0
 
     - ``gradient_descent``: *(Optional)* Whether to use gradient descent instead of
-      PSO for the pre-sampling optimization. When turned on, every PSO step of the
-      ``galaxy-quasar`` and ``galaxy-galaxy`` recipes is replaced by a gradient
-      descent step, keeping the recipe's staged sequence of fixed and free
-      parameters. If both ``pso`` and ``gradient_descent`` are ``true``, gradient
-      descent takes precedence.
+      PSO for the pre-sampling optimization. When turned on, the whole staged
+      optimization sequence of the ``galaxy-quasar`` and ``galaxy-galaxy`` recipes is
+      replaced by a **single** gradient descent over all free parameters. If both
+      ``pso`` and ``gradient_descent`` are ``true``, gradient descent takes precedence.
+
+      This flag is the original, unstaged way to run gradient descent, and optimizing
+      every parameter block at once from a rough starting point tends to walk into a
+      local minimum where the source absorbs the lens light. Two staged recipe names
+      are preferred; both imply gradient descent regardless of this flag, and take
+      precedence over it:
+
+      - ``recipe_name="galaxy-galaxy-pso-gradient-descent"`` runs the ``galaxy-galaxy``
+        staging with a shortened particle swarm at each stage and a multi-start
+        gradient descent at the end of it. **This is the recommended way to run
+        gradient descent**, and on the systems it was measured on it is the better fit
+        in about half the wall clock time. The swarm chooses the basin, which is what a
+        swarm is good at, and the descent converges it, which is what a swarm is bad
+        at: it stops at the resolution its collapsing spatial scale allows. On the
+        single-band galaxy-galaxy lens the three recipes were measured on, over runs
+        repeated because the swarm is not seeded, it reached ``logL = -4901.9`` in
+        113 s for a single Sersic source against the PSO recipe's ``-4910.7`` in
+        209 s, beating it in every run. For a
+        Sersic-plus-shapelets source it took 433 s against 906 s and reached a better
+        optimum at every rank from best run to worst, though both recipes land in one
+        of two nearby modes at about the same rate. See ``GALAXY_GALAXY_RECIPE.rst``
+        for the full numbers.
+
+      - ``recipe_name="galaxy-galaxy-gradient-descent"`` runs the same staging with a
+        gradient descent replacing each swarm. It is fully reproducible and no longer
+        diverges, but on that same system it reached only ``logL = -4940``, worse than
+        either of the above, and it is the slowest of the three. That is the expected
+        result rather than a defect: it has no global search at all, so each stage
+        converges whichever basin its draws happen to land in. Prefer the hybrid above
+        unless you are deliberately investigating gradient descent on its own.
 
       Gradient descent uses JAXtronomy's Optax L-BFGS minimizer, which differentiates
       the likelihood with JAX. It therefore requires ``Processor.swim(...,
@@ -689,41 +718,63 @@ Fitting Options
       - Suboptions:
 
         - ``maxiter``: Maximum number of gradient descent iterations per chain.
-          Defaults to ``500``.
+          Defaults to ``1000``.
 
           - Type: ``integer``
           - Example:
 
             .. code-block:: yaml
 
-               maxiter: 1000
+               maxiter: 2000
 
         - ``num_chains``: Number of minimization chains to run. Each chain starts
           from a different point drawn from the prior distribution, so running more
-          chains costs more time but helps avoid local minima. Defaults to ``1``.
+          chains costs more time but helps avoid local minima. Chains run
+          sequentially, not in parallel, so cost scales roughly linearly with this
+          value. Defaults to ``8``.
 
           - Type: ``integer``
           - Example:
 
             .. code-block:: yaml
 
-               num_chains: 4
+               num_chains: 8
 
-        - ``tolerance``: Convergence tolerance. A chain stops when
-          ``|logL[i] - logL[i-1]| < tolerance`` three times in a row. Defaults to
-          ``0.01``.
+        - ``tolerance``: Relative convergence tolerance. A chain stops when a step's
+          decrease in loss (``-logL``) is smaller than ``tolerance`` times the loss's
+          magnitude, and did not make the loss worse, three times in a row. Being
+          relative to the loss magnitude rather than an absolute threshold, the same
+          value behaves consistently across datasets of different sizes. Defaults to
+          ``1e-6``.
 
           - Type: ``float``
           - Example:
 
             .. code-block:: yaml
 
-               tolerance: 0.01
+               tolerance: 1e-6
+
+        - ``grad_tolerance``: Gradient-norm convergence tolerance. A chain stops once
+          the largest component of the gradient falls below it. This is the standard
+          L-BFGS stopping test and asks the question that matters, whether the chain
+          has reached a stationary point, so it is the criterion to tune rather than
+          ``tolerance``. ``0`` disables it. Defaults to ``1e-5``.
+
+          The right value depends on the dataset. Read the per-chain diagnostics
+          recorded in the output file to tune it: a stage that stops after a handful of
+          iterations with a large final gradient norm needs a smaller value.
+
+          - Type: ``float``
+          - Example:
+
+            .. code-block:: yaml
+
+               grad_tolerance: 1e-5
 
         - ``sigma_scale``: Scaling of the distribution the starting points are drawn
           from, relative to the per-parameter ``sigma`` values. Defaults to ``1.0``.
-          Used by the ``galaxy-galaxy`` recipe; the ``galaxy-quasar`` recipe sets its
-          own per-stage scaling.
+          With ``warm_start`` on, this affects only the *drawn* chains, not the first
+          one, so it controls how widely the optimizer explores around the current fit.
 
           - Type: ``float``
           - Example:
@@ -732,15 +783,145 @@ Fitting Options
 
                sigma_scale: 1.0
 
-        - ``rng_seed``: Seed used to draw the starting point of each chain from the
-          prior distribution. Defaults to ``null``, which draws a random seed.
+        - ``warm_start``: Whether the first chain starts at the current parameter state
+          instead of at a random draw. This is what lets a descent refine the fitting
+          sequence's current fit rather than discarding it, so that the staged recipes
+          compose. A chain that ends worse than the state it started from is never
+          accepted, so a stage can never leave the model worse than it found it.
+          Defaults to ``true``.
 
-          - Type: ``integer``
+          - Type: ``boolean``
           - Example:
 
             .. code-block:: yaml
 
-               rng_seed: 1
+               warm_start: true
+
+        - ``rng_seed``: Seed used to draw the starting points of the chains after the
+          first. Defaults to ``0``, so that a run repeats. Each gradient descent step of
+          a staged recipe gets its own seed, derived as ``rng_seed + step index``, so
+          the whole run is reproducible from this one number while the stages stay
+          independent. Set it to ``null`` to draw a fresh random seed every run, which
+          makes the run **not** reproducible.
+
+          - Type: ``integer`` or ``null``
+          - Example:
+
+            .. code-block:: yaml
+
+               rng_seed: 0
+
+    - ``gradient_descent_schedule``: *(Optional)* Staging knobs for the
+      ``galaxy-galaxy-gradient-descent`` and ``galaxy-galaxy-pso-gradient-descent``
+      recipes. These shape the recipe rather than the optimizer, which is why they are
+      separate from ``gradient_descent_settings``.
+
+      - Suboptions:
+
+        - ``stages``: Per-stage overrides of ``gradient_descent_settings``, keyed by
+          stage name: ``lens_light``, ``source``, ``lens_source``,
+          ``lens_source_beta`` and ``all``, in the order they run within an epoch.
+
+          Because the first chain starts at the current parameter state and a chain
+          that ends worse is never accepted, ``sigma_scale`` controls only how far the
+          exploring chains are thrown. The default schedule therefore explores freely
+          in the early stages, where the worst case is wasted time rather than a worse
+          model, and refines from the warm start alone in the late stages, which are
+          already in the right basin and free every block at once:
+
+          .. code-block:: yaml
+
+             stages:
+               lens_light: {sigma_scale: 1.0, num_chains: 4}
+               source: {sigma_scale: 1.0, num_chains: 4}
+               lens_source: {sigma_scale: 0.5, num_chains: 2}
+               lens_source_beta: {sigma_scale: 0.2, num_chains: 1}
+               all: {sigma_scale: 0.1, num_chains: 1}
+
+        - ``epoch_decay``: How the schedule is narrowed in epochs after the first,
+          which start from an already-good model. ``sigma_scale`` is multiplied by this
+          factor per epoch and ``num_chains`` is capped at ``max_chains``. Defaults to
+          ``{sigma_scale: 0.3, max_chains: 1}``, so later epochs are fully
+          deterministic.
+
+        - ``polish``: Settings for the ``galaxy-galaxy-pso-gradient-descent`` recipe,
+          which runs a particle swarm at each stage of the galaxy-galaxy staging and a
+          gradient descent at the end of it. Alongside the optimizer settings
+          (``maxiter``, ``num_chains``, ``tolerance``, ``sigma_scale``,
+          ``warm_start``) it takes three knobs that shape the recipe:
+
+          - ``stages``: which stages get a descent. Defaults to ``[all]``, one descent
+            after the final stage. Naming all five runs a descent after every swarm.
+          - ``epochs``: how many times the five-stage staging repeats. Defaults to 1,
+            against the ``galaxy-galaxy`` recipe's 2.
+          - ``pso_iteration_scale`` and ``pso_particle_scale``: the fraction of the
+            iteration and particle counts configured in ``pso_settings`` that each
+            swarm actually runs. Defaults to 0.25 of the iterations at the full
+            particle count for the four restricted stages, and the whole budget for
+            the final ``all`` stage. Both counts are floored at 1.
+
+          The division of labour is that the swarm chooses the basin and the descent
+          converges it. A swarm finds the right region within a few tens of iterations
+          and then buys further digits very slowly, because its spatial scale collapses
+          geometrically; a warm-started gradient descent buys those digits for a small
+          fraction of the cost. So the restricted stages, whose swarm budget makes no
+          measurable difference to the answer, are cut to a quarter, while the final
+          ``all`` stage -- the only one with every parameter block free, and the one
+          that decides which basin the run ends in -- keeps its whole swarm.
+
+          The defaults were tuned by measurement for both a single Sersic source and
+          a Sersic-plus-shapelets source; see ``GALAXY_GALAXY_RECIPE.rst`` for the
+          measured system and the numbers. Three results are worth knowing
+          before changing them:
+
+          - ``num_chains: 5`` on the final descent is what makes it reliable, not just
+            accurate. The first chain warm-starts from the swarm's answer and the rest
+            from draws around it, and a chain that ends worse than the state it was
+            handed is never accepted, so extra chains can only cost time. With a single
+            chain the shapelets source sometimes finished several hundred in ``logL``
+            short; with five it did not.
+          - Adding descents at the earlier stages does not improve the fit and costs
+            real time, because ``FittingSequence.fit_sequence`` rebuilds the likelihood
+            and clears the JAX compilation cache before every step, so each extra
+            descent pays a full XLA compilation. Worse, converging a restricted stage
+            too well can trap the model: a later short swarm, seeded at that optimum,
+            cannot leave it.
+          - Cutting the *final* stage's swarm is what does the damage. Cutting the
+            restricted stages' swarms further, or keeping more of them, both landed
+            within the run-to-run scatter.
+
+        - ``polish_stages``: Per-stage overrides of ``polish``, keyed by the same five
+          stage names as ``stages`` above. Everything that distinguishes the final
+          stage lives here:
+
+          .. code-block:: yaml
+
+             polish_stages:
+               lens_light: {maxiter: 300}
+               source: {maxiter: 400}
+               lens_source: {maxiter: 600}
+               lens_source_beta: {maxiter: 600}
+               all: {pso_iteration_scale: 1.0, maxiter: 3000, num_chains: 5, sigma_scale: 0.5}
+
+          The four ``maxiter`` values above are never reached in a default run, since
+          those stages are not polished at all. They are there so that adding one to
+          ``polish: stages:`` gets a budget suited to a stage that holds most parameter
+          blocks fixed and converges in tens of iterations.
+
+          Anything set under ``polish`` applies to every stage and overrides these
+          built-in per-stage defaults; ``polish_stages`` overrides both.
+
+      - Example:
+
+        .. code-block:: yaml
+
+           gradient_descent_schedule:
+             stages:
+               all: {sigma_scale: 0.05, num_chains: 2}
+             epoch_decay: {sigma_scale: 0.3, max_chains: 1}
+             polish: {epochs: 1, pso_iteration_scale: 0.25}
+             polish_stages:
+               all: {num_chains: 8}
 
     - ``sampling``: *(Optional)* Whether to perform sampling after optimization.
 

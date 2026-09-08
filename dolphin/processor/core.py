@@ -10,11 +10,12 @@ from .. import __version__
 from lenstronomy.Workflow.fitting_sequence import FittingSequence
 from schwimmbad import choose_pool
 
+from ..util import enable_jax_x64
 from .files import FileSystem
 from .config import ModelConfig
 from .data import ImageData
 from .data import PSFData
-from .recipe import Recipe
+from .recipe import Recipe, recipe_uses_gradient_descent
 
 
 class Processor(object):
@@ -52,7 +53,10 @@ class Processor(object):
         :type log: `bool`
         :param mpi: enable MPI for parallel processing
         :type mpi: `bool`
-        :param recipe_name: recipe for pre-sampling optimization. Supported: 'galaxy-quasar', 'galaxy-galaxy', 'custom', 'skip'.
+        :param recipe_name: recipe for pre-sampling optimization. Supported: 'galaxy-quasar', 'galaxy-galaxy',
+            'galaxy-galaxy-gradient-descent', 'galaxy-galaxy-pso-gradient-descent', 'custom', 'skip'.
+            The two gradient descent recipes run the galaxy-galaxy staging with a gradient descent at each stage,
+            or with a gradient descent polishing each particle swarm, and require `use_jax=True`.
             'custom' will use the fitting_kwargs_list directly from the yaml settings for pre-sampling optimization.
             'skip' will skip pre-sampling optimization and directly sample the full model. See `Recipe` class for details.
         :type recipe_name: `str`
@@ -80,11 +84,17 @@ class Processor(object):
         config = self.get_lens_config(lens_name)
         recipe = Recipe(config, thread_count=thread_count)
 
-        if recipe.do_gradient_descent and not use_jax:
+        if (
+            recipe.do_gradient_descent or recipe_uses_gradient_descent(recipe_name)
+        ) and not use_jax:
             raise ValueError(
-                "Gradient descent (`fitting: gradient_descent:`) is only available "
-                "through JAXtronomy. Call Processor.swim(..., use_jax=True) or turn "
-                "off gradient descent in the settings file."
+                "Gradient descent is only available through JAXtronomy. It was "
+                "requested by {}. Call Processor.swim(..., use_jax=True), or use a "
+                "recipe and settings that do not run gradient descent.".format(
+                    "`fitting: gradient_descent:` in the settings file"
+                    if recipe.do_gradient_descent
+                    else "recipe_name='{}'".format(recipe_name)
+                )
             )
 
         psf_supersampling_factor = config.get_psf_supersampled_factor()
@@ -93,6 +103,9 @@ class Processor(object):
         )
 
         if use_jax:
+            # has to happen before JAXtronomy, and hence JAX, is imported
+            enable_jax_x64()
+
             from jaxtronomy.Workflow.fitting_sequence import (
                 FittingSequence as FittingSequenceJAX,
             )
