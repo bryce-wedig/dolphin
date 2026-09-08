@@ -739,6 +739,104 @@ class Output(Processor):
 
         return fig
 
+    def plot_pso_chain(
+        self,
+        lens_name,
+        model_id,
+        index=-1,
+        fig_width=18,
+        parameters_to_plot=[],
+    ):
+        """Plot the chain of a particle swarm optimization (PSO) step.
+
+        The three panels show the likelihood of the best particle, and the
+        position and the velocity of the best particle for each parameter. The
+        positions and the velocities are scaled by the final position of the
+        corresponding parameter, so that all the parameters are comparable
+        within the same panel.
+
+        :param lens_name: name of the lens
+        :type lens_name: `str`
+        :param model_id: model run identifier
+        :type model_id: `str`
+        :param index: index of the PSO step to plot, counted among the PSO steps
+            only and not among all the steps of the fitting sequence. The
+            default, -1, plots the last PSO step.
+        :type index: `int`
+        :param fig_width: width of the figure
+        :type fig_width: `float`
+        :param parameters_to_plot: if not empty, list of parameters to plot in
+            the position and the velocity panels
+        :type parameters_to_plot: `list` of `str`
+        :return: `matplotlib.figure.Figure` instance with the plots
+        :rtype: `matplotlib.figure.Figure`
+        """
+        self.load_output(lens_name, model_id)
+
+        pso_steps = [step for step in self.fit_output if step[0] == "PSO"]
+
+        if len(pso_steps) == 0:
+            raise ValueError(
+                f"No PSO step was run for {lens_name} with model ID {model_id}."
+            )
+
+        if not -len(pso_steps) <= index < len(pso_steps):
+            raise ValueError(
+                f"Index {index} is out of range, the fitting sequence has "
+                f"{len(pso_steps)} PSO step(s)."
+            )
+
+        chi2_list, position, velocity = pso_steps[index][1]
+        param_list = pso_steps[index][2]
+
+        if len(chi2_list) == 0:
+            raise ValueError(
+                "The PSO step does not contain a chain to plot. The PSO in "
+                "JAXtronomy does not store the chain, so the outputs from runs "
+                "with `Processor.swim(..., use_jax=True)` have empty PSO chains."
+            )
+
+        if len(parameters_to_plot) == 0:
+            parameter_indices = np.arange(len(param_list))
+        else:
+            parameter_indices = []
+            for parameter in parameters_to_plot:
+                if parameter in param_list:
+                    parameter_indices.append(param_list.index(parameter))
+                else:
+                    raise ValueError(
+                        f"Parameter '{parameter}' not found. Available parameters: {param_list}"
+                    )
+
+        position = np.array(position)
+        velocity = np.array(velocity)
+
+        fig, axes = plt.subplots(1, 3, figsize=(fig_width, fig_width / 3))
+
+        axes[0].plot(np.log10(-np.array(chi2_list)))
+        axes[0].set_title("likelihood")
+        axes[0].set_ylabel(r"$\log_{10} \left( - \log \mathcal{L} \right)$")
+
+        for i in parameter_indices:
+            axes[1].plot(
+                (position[:, i] - position[-1, i]) / (position[-1, i] + 1),
+                label=param_list[i],
+            )
+        axes[1].set_title("particle position")
+        axes[1].set_ylabel("scaled deviation from the final position")
+
+        for i in parameter_indices:
+            axes[2].plot(velocity[:, i] / (position[-1, i] + 1), label=param_list[i])
+        axes[2].set_title("particle velocity")
+        axes[2].set_ylabel("scaled velocity")
+
+        for ax in axes:
+            ax.set_xlabel("iteration")
+        for ax in axes[1:]:
+            ax.legend(fontsize=8)
+
+        return fig
+
     def get_param_class(self, lens_name, model_id):
         """Get `Param` instance for the lens model.
 

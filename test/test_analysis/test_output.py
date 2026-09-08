@@ -268,6 +268,74 @@ class TestOutput(object):
                 parameters_to_plot=["gamma_lens42"],
             )
 
+    def test_plot_pso_chain(self):
+        """Test `plot_pso_chain` method.
+
+        :return:
+        :rtype:
+        """
+        fig = self.output.plot_pso_chain("lens_system2", "example")
+
+        plt.close(fig)
+
+        first_pso_step = [step for step in self.output.fit_output if step[0] == "PSO"][
+            0
+        ]
+
+        fig2 = self.output.plot_pso_chain(
+            "lens_system2",
+            "example",
+            index=0,
+            parameters_to_plot=[first_pso_step[2][0]],
+        )
+
+        plt.close(fig2)
+
+        with pytest.raises(ValueError, match="not found"):
+            self.output.plot_pso_chain(
+                "lens_system2", "example", parameters_to_plot=["gamma_lens42"]
+            )
+
+        with pytest.raises(ValueError, match="out of range"):
+            self.output.plot_pso_chain("lens_system2", "example", index=42)
+
+    def test_plot_pso_chain_exceptions(self):
+        """Test that `plot_pso_chain` raises for fitting sequences without a PSO chain
+        to plot, as is the case for the PSO in JAXtronomy that stores no chain.
+
+        :return:
+        :rtype:
+        """
+        save_dict = {
+            "settings": {"some": "settings"},
+            "kwargs_result": {"0": None},
+            "fit_output": [
+                ["emcee", np.ones((50, 2)), ["param1", "param2"], np.ones(50)]
+            ],
+            "multi_band_list_out": ["band1"],
+        }
+        self.processor.file_system.save_output("test_no_pso", "example", save_dict)
+
+        with pytest.raises(ValueError, match="No PSO step"):
+            self.output.plot_pso_chain("test_no_pso", "example")
+
+        save_dict = {
+            "settings": {"some": "settings"},
+            "kwargs_result": {"0": None},
+            "fit_output": [
+                [
+                    "PSO",
+                    [np.array([]), np.array([]), np.array([])],
+                    ["param1", "param2"],
+                ]
+            ],
+            "multi_band_list_out": ["band1"],
+        }
+        self.processor.file_system.save_output("test_empty_pso", "example", save_dict)
+
+        with pytest.raises(ValueError, match="does not contain a chain to plot"):
+            self.output.plot_pso_chain("test_empty_pso", "example")
+
     def test_get_reshaped_emcee_chain(self):
         """Test `get_reshaped_emcee_chain` method.
 
