@@ -52,6 +52,17 @@ fitting:
     num_particle: 2
     num_iteration: 2
 
+  # gradient descent replaces the PSO steps of the recipe when turned on. It runs
+  # through JAXtronomy, so it requires `Processor.swim(..., use_jax=True)` and the
+  # jax, jaxtronomy, optax and numpyro packages.
+  # gradient_descent: false
+  # gradient_descent_settings:
+    # maxiter: 500
+    # num_chains: 1
+    # tolerance: 0.01
+    # sigma_scale: 1.0
+    # rng_seed:
+
   sampling: true
   sampler: emcee
   sampler_settings: # keywords to be sent to lenstronomy.Workflow.fitting_sequence.FittingSequence.mcmc()

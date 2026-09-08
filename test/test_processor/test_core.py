@@ -2,6 +2,8 @@
 """Tests for data module."""
 
 from pathlib import Path
+
+import pytest
 import sys
 
 from dolphin.analysis.output import Output
@@ -32,6 +34,39 @@ class TestProcessor(object):
         self.processor.swim(
             "lensed_quasar", "test", use_jax=True, recipe_name="galaxy-quasar"
         )
+
+    def test_swim_with_gradient_descent(self, monkeypatch):
+        """Test `swim` method with the gradient descent optimizer."""
+        config = self.processor.get_lens_config("lens_system1")
+        config.settings["fitting"]["pso"] = False
+        config.settings["fitting"]["gradient_descent"] = True
+        config.settings["fitting"]["gradient_descent_settings"] = {
+            "maxiter": 2,
+            "num_chains": 1,
+            "rng_seed": 1,
+        }
+        config.settings["fitting"]["sampling"] = False
+
+        monkeypatch.setattr(Processor, "get_lens_config", lambda self, name: config)
+
+        # gradient descent is only available through JAXtronomy
+        with pytest.raises(ValueError):
+            self.processor.swim("lens_system1", "test_gradient_descent", log=False)
+
+        self.processor.swim(
+            "lens_system1",
+            "test_gradient_descent",
+            log=False,
+            use_jax=True,
+            recipe_name="galaxy-galaxy",
+        )
+
+        output = self.processor.file_system.load_output(
+            "lens_system1", "test_gradient_descent"
+        )
+        fitting_types = [step[0] for step in output["fit_output"]]
+        assert fitting_types.count("optax") == 10
+        assert "kwargs_lens" in output["fit_output"][0][1]
 
     def test_swim_mge(self):
         """Test `swim` method for an MGE lens light model."""

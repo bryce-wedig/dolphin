@@ -5,16 +5,77 @@ pre-defined recipes."""
 __author__ = "ajshajib"
 
 from copy import deepcopy
+from importlib.util import find_spec
 import numpy as np
 from scipy import ndimage
+
+# radius (arcsec) of the region kept clear at the image center in `get_arc_mask`
+# when no Einstein radius guess is available
+DEFAULT_CLEAR_CENTER = 0.4
+# when an Einstein radius guess is available, the clear center is scaled to this
+# multiple of it, so that it stays inside the arcs for small lenses as well
+CLEAR_CENTER_THETA_E_FACTOR = 0.5
+# ... but never smaller than this many pixels, below which the arc finder starts
+# marking the deflector's own light as arc
+CLEAR_CENTER_MIN_PIXELS = 2
+
+
+"""Default scaling of the PSO seeding box relative to the per-parameter sigmas. 
+Overridable per lens with `fitting.pso_settings.sigma_scale:`."""
+DEFAULT_PSO_SIGMA_SCALE = 1.0
+
+"""Packages required by the gradient descent optimizer, which runs through
+JAXtronomy's `optax` fitting routine."""
+GRADIENT_DESCENT_PACKAGES = ("jax", "jaxtronomy", "numpyro", "optax")
+
+"""Default settings for the gradient descent optimizer, overridable per lens with
+`fitting.gradient_descent_settings:`."""
+DEFAULT_GRADIENT_DESCENT_SETTINGS = {
+    "maxiter": 500,
+    "num_chains": 1,
+    "tolerance": 0.01,
+    "sigma_scale": 1.0,
+    "rng_seed": None,
+}
+
+
+def check_gradient_descent_dependencies():
+    """Check that the packages backing the gradient descent optimizer are installed.
+
+    Only the presence of the packages is checked, they are not imported here. `jax`
+    reads the `JAX_PLATFORMS` and `XLA_FLAGS` environment variables at import time, so
+    importing it as a side effect of reading the settings would be surprising.
+
+    :raises ImportError: if any of `GRADIENT_DESCENT_PACKAGES` is not installed
+    :return: None
+    :rtype: `None`
+    """
+    missing = []
+    for package in GRADIENT_DESCENT_PACKAGES:
+        try:
+            found = find_spec(package) is not None
+        except (ImportError, ValueError):
+            found = False
+
+        if not found:
+            missing.append(package)
+
+    if missing:
+        raise ImportError(
+            "Gradient descent requires these packages, which are not installed: "
+            "{}. `fitting: gradient_descent:` runs through JAXtronomy's `optax` "
+            "routine; install with `pip install jax optax numpyro` and `pip install "
+            "git+https://github.com/lenstronomy/JAXtronomy.git`, or set `fitting: "
+            "gradient_descent: false` in the settings file.".format(", ".join(missing))
+        )
 
 
 class Recipe(object):
     """This class contains methods to create fitting recipes.
 
-    It builds an optimization workflow (currently using particle-swarm optimization) to
-    first find a good enough lens model within the total parameter space. Then, the
-    sampling can be done starting from the neighborhood of this point.
+    It builds an optimization workflow (using either particle-swarm optimization or
+    gradient descent) to first find a good enough lens model within the total parameter
+    space. Then, the sampling can be done starting from the neighborhood of this point.
     """
 
     def __init__(self, config, thread_count=1):
@@ -33,15 +94,43 @@ class Recipe(object):
         else:
             self.do_pso = deepcopy(config.settings["fitting"]["pso"])
 
+            if self.do_pso is None:
+                self.do_pso = False
+
+        if self.do_pso:
             self._pso_num_particle = self._config.settings["fitting"]["pso_settings"][
                 "num_particle"
             ]
             self._pso_num_iteration = self._config.settings["fitting"]["pso_settings"][
                 "num_iteration"
             ]
+            self._pso_sigma_scale = self._config.settings["fitting"][
+                "pso_settings"
+            ].get("sigma_scale", DEFAULT_PSO_SIGMA_SCALE)
 
-            if self.do_pso is None:
-                self.do_pso = False
+        try:
+            config.settings["fitting"]["gradient_descent"]
+        except (NameError, KeyError):
+            self.do_gradient_descent = False
+        else:
+            self.do_gradient_descent = deepcopy(
+                config.settings["fitting"]["gradient_descent"]
+            )
+
+            if self.do_gradient_descent is None:
+                self.do_gradient_descent = False
+
+        if self.do_gradient_descent:
+            check_gradient_descent_dependencies()
+
+            # a `gradient_descent_settings:` key left blank in the yaml loads as `None`
+            gradient_descent_settings = (
+                self._config.settings["fitting"].get("gradient_descent_settings") or {}
+            )
+            self._gradient_descent_settings = {
+                **DEFAULT_GRADIENT_DESCENT_SETTINGS,
+                **gradient_descent_settings,
+            }
 
         try:
             config.settings["fitting"]["psf_iteration"]
@@ -64,6 +153,50 @@ class Recipe(object):
                 self.do_sampling = False
 
         self._thread_count = thread_count
+
+    @property
+    def do_optimization(self):
+        """Whether a pre-sampling optimization is requested, with either optimizer.
+
+        :return: `True` if either PSO or gradient descent is turned on
+        :rtype: `bool`
+        """
+        return bool(self.do_pso or self.do_gradient_descent)
+
+    def _get_optimization_step(self, sigma_scale=None):
+        """Get one pre-sampling optimization step for `fitting_kwargs_list`.
+
+        Gradient descent replaces PSO when `fitting: gradient_descent:` is turned on,
+        so that the recipes keep their staged sequence of fixed and free parameters
+        either way. If both optimizers are turned on, gradient descent takes
+        precedence.
+
+        :param sigma_scale: scaling of the initial parameter spread relative to the
+            per-parameter sigmas for this particular step. If `None`, the value
+            configured for the active optimizer is used.
+        :type sigma_scale: `float` or `None`
+        :return: a single fitting step, `['optax', {...}]` or `['PSO', {...}]`
+        :rtype: `list`
+        """
+        if self.do_gradient_descent:
+            gradient_descent_kwargs = deepcopy(self._gradient_descent_settings)
+
+            if sigma_scale is not None:
+                gradient_descent_kwargs["sigma_scale"] = sigma_scale
+
+            return ["optax", gradient_descent_kwargs]
+
+        return [
+            "PSO",
+            {
+                "sigma_scale": (
+                    self._pso_sigma_scale if sigma_scale is None else sigma_scale
+                ),
+                "n_particles": self._pso_num_particle,
+                "n_iterations": self._pso_num_iteration,
+                "threadCount": self._thread_count,
+            },
+        ]
 
     def get_recipe(self, kwargs_data_joint=None, recipe_name="galaxy-quasar"):
         """Get `fitting_kwargs_list` according to the requested `recipe`.
@@ -168,7 +301,7 @@ class Recipe(object):
         """
         fitting_kwargs_list = []
 
-        if self.do_pso:
+        if self.do_optimization:
             pso_range_multipliers = [1.0, 0.1, 0.1]
 
             pl_model_index = self._get_power_law_model_index()
@@ -203,15 +336,7 @@ class Recipe(object):
                     #     ])
 
                     fitting_kwargs_list.append(
-                        [
-                            "PSO",
-                            {
-                                "sigma_scale": multiplier,
-                                "n_particles": self._pso_num_particle,
-                                "n_iterations": self._pso_num_iteration,
-                                "threadCount": self._thread_count,
-                            },
-                        ]
+                        self._get_optimization_step(sigma_scale=multiplier)
                     )
 
                     if self.reconstruct_psf:
@@ -290,7 +415,7 @@ class Recipe(object):
         """
         fitting_kwargs_list = []
 
-        if self.do_pso:
+        if self.do_optimization:
             arc_masks = []
             masks = self._config.get_masks()
             for i, band_item in enumerate(kwargs_data_joint["multi_band_list"]):
@@ -328,15 +453,7 @@ class Recipe(object):
                     #         }
                     #     },
                     # ],
-                    [
-                        "PSO",
-                        {
-                            "sigma_scale": 1.0,
-                            "n_particles": self._pso_num_particle,
-                            "n_iterations": self._pso_num_iteration,
-                            "threadCount": self._thread_count,
-                        },
-                    ],
+                    self._get_optimization_step(),
                 ]
 
                 # unfix the source except for beta, keep lens fixed, fix lens
@@ -378,22 +495,17 @@ class Recipe(object):
                 # optimize for the source only
                 fitting_kwargs_list += [
                     # self.fix_params('lens'),
-                    [
-                        "PSO",
-                        {
-                            "sigma_scale": 1.0,
-                            "n_particles": self._pso_num_particle,
-                            "n_iterations": self._pso_num_iteration,
-                            "threadCount": self._thread_count,
-                        },
-                    ],
+                    self._get_optimization_step(),
                 ]
 
                 # unfix the central deflector parameters, keep beta fixed
-                fitting_kwargs_list += [
-                    self.unfix_params("lens"),
-                    self.fix_params("lens", external_shear_model_index),
-                ]
+                fitting_kwargs_list += [self.unfix_params("lens")]
+
+                # keep the external shear pinned during PSO, if there is one
+                if external_shear_model_index is not None:
+                    fitting_kwargs_list += [
+                        self.fix_params("lens", external_shear_model_index)
+                    ]
 
                 # optimize for lens and source together, fix power-law gamma to
                 # 2, as all the lens parameters are unfixed
@@ -406,15 +518,7 @@ class Recipe(object):
                     ]
 
                 fitting_kwargs_list += [
-                    [
-                        "PSO",
-                        {
-                            "sigma_scale": 1.0,
-                            "n_particles": self._pso_num_particle,
-                            "n_iterations": self._pso_num_iteration,
-                            "threadCount": self._thread_count,
-                        },
-                    ],
+                    self._get_optimization_step(),
                 ]
 
                 # unfix the shapelets beta parameter
@@ -428,25 +532,9 @@ class Recipe(object):
 
                 # finally optimize with all of lens, lens light and source free
                 fitting_kwargs_list += [
-                    [
-                        "PSO",
-                        {
-                            "sigma_scale": 1.0,
-                            "n_particles": self._pso_num_particle,
-                            "n_iterations": self._pso_num_iteration,
-                            "threadCount": self._thread_count,
-                        },
-                    ],
+                    self._get_optimization_step(),
                     self.unfix_params("lens_light"),
-                    [
-                        "PSO",
-                        {
-                            "sigma_scale": 1.0,
-                            "n_particles": self._pso_num_particle,
-                            "n_iterations": self._pso_num_iteration,
-                            "threadCount": self._thread_count,
-                        },
-                    ],
+                    self._get_optimization_step(),
                 ]
 
                 # finally, relax shear parameters for MCMC later
@@ -460,14 +548,63 @@ class Recipe(object):
 
         return fitting_kwargs_list
 
-    def get_arc_mask(self, image, clear_center=0.4, mask=None):
+    def get_theta_E_guess(self):
+        """Get the initial guess for the central deflector's Einstein radius, if
+        provided in the settings.
+
+        :return: Einstein radius guess in arcsec, or `None` if not provided
+        :rtype: `float` or `None`
+        """
+        try:
+            initial_guesses = self._config.settings["lens_options"]["initial_guesses"]
+            for _, params in sorted(initial_guesses.items()):
+                if "theta_E" in params:
+                    return float(params["theta_E"])
+        except (AttributeError, KeyError, TypeError):
+            pass
+
+        return None
+
+    def get_clear_center(self):
+        """Get the radius of the central region that `get_arc_mask` keeps clear.
+
+        The value is taken from the `mask: clear_center:` setting, if provided.
+        Otherwise, it is scaled to the Einstein radius guess (capped at
+        `DEFAULT_CLEAR_CENTER`, so that it can only shrink relative to the previous
+        behavior, and floored at `CLEAR_CENTER_MIN_PIXELS` pixels). If no Einstein
+        radius guess is provided either, it falls back to `DEFAULT_CLEAR_CENTER`.
+
+        :return: radius of the central region to **not** mask, in arcsec
+        :rtype: `float`
+        """
+        try:
+            clear_center = self._config.settings["mask"]["clear_center"]
+        except (KeyError, TypeError):
+            clear_center = None
+
+        if clear_center is not None:
+            return float(clear_center)
+
+        theta_E = self.get_theta_E_guess()
+
+        if theta_E is None:
+            return DEFAULT_CLEAR_CENTER
+
+        return max(
+            CLEAR_CENTER_MIN_PIXELS * np.max(self._config.pixel_size),
+            min(DEFAULT_CLEAR_CENTER, CLEAR_CENTER_THETA_E_FACTOR * theta_E),
+        )
+
+    def get_arc_mask(self, image, clear_center=None, mask=None):
         """Create a mask for lensed galaxy arcs from the image of the lens. The lens
         galaxy is required to be close to the center (within a few pixels) of the image.
 
         :param image: image of the lensing system
         :type image: `numpy.ndarray`
-        :param clear_center: radius of the central region to **not** mask
-        :type clear_center: `float`
+        :param clear_center: radius of the central region to **not** mask. If `None`,
+            it is taken from the settings through `get_clear_center()`, which scales
+            it to the Einstein radius guess when one is provided.
+        :type clear_center: `float` or `None`
         :param mask: a mask to multiply with the arc mask. If the central
             region is masked out in `mask`, then a circle with radius
             `clear_center` will be unmasked.
@@ -475,6 +612,11 @@ class Recipe(object):
         :return: mask for the lensed galaxy arcs
         :rtype: `numpy.ndarray`
         """
+        if clear_center is None:
+            clear_center = self.get_clear_center()
+
+        clear_center_pixels = int(clear_center / np.max(self._config.pixel_size))
+
         # take x- and y- gradient of the image
         x_diff = np.diff(image, axis=1)[1:, :]
         y_diff = np.diff(image, axis=0)[:, 1:]
@@ -499,7 +641,7 @@ class Recipe(object):
         radial_gradient = 1 - radial_gradient
 
         # unmark any marked pixels from the central region
-        radial_gradient[r < int(clear_center / np.max(self._config.pixel_size))] = 0
+        radial_gradient[r < clear_center_pixels] = 0
 
         # remove connected regions with area less than 5 pixels to remove
         # masked regions created by noise
@@ -524,10 +666,22 @@ class Recipe(object):
         a3 = np.rot90(a2)  # 1's at upper than the diagonal
         a1 = np.flip(a3)  # 1's at lower than the diagonal
 
-        dilated[:50, :50] = ndimage.binary_dilation(filtered_map[:50, :50], a4)
-        dilated[:50, 50:] = ndimage.binary_dilation(filtered_map[:50, 50:], a3)
-        dilated[50:, :50] = ndimage.binary_dilation(filtered_map[50:, :50], a1)
-        dilated[50:, 50:] = ndimage.binary_dilation(filtered_map[50:, 50:], a2)
+        # the quadrants are taken about the deflector, which sits at the center
+        split_x = int(np.searchsorted(x[0], 0, side="right"))
+        split_y = int(np.searchsorted(y[:, 0], 0, side="right"))
+
+        dilated[:split_y, :split_x] = ndimage.binary_dilation(
+            filtered_map[:split_y, :split_x], a4
+        )
+        dilated[:split_y, split_x:] = ndimage.binary_dilation(
+            filtered_map[:split_y, split_x:], a3
+        )
+        dilated[split_y:, :split_x] = ndimage.binary_dilation(
+            filtered_map[split_y:, :split_x], a1
+        )
+        dilated[split_y:, split_x:] = ndimage.binary_dilation(
+            filtered_map[split_y:, split_x:], a2
+        )
 
         # increase the size by 1 along both axes to match the image size
         # the mask is the negative of the marked pixel-map
@@ -547,7 +701,7 @@ class Recipe(object):
             )
             r = np.sqrt(x * x + y * y)
 
-            arc_mask[r < int(clear_center / np.max(self._config.pixel_size))] = 1
+            arc_mask[r < clear_center_pixels] = 1
 
         return arc_mask
 
