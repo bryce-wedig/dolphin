@@ -403,16 +403,46 @@ class NonNegativeMGESingleBandMultiModel(SingleBandMultiModel):
         return logL, param
 
 
-@contextlib.contextmanager
-def nn_mge_solver(enabled=True):
-    """Make lenstronomy build image models that solve for non-negative MGE amplitudes.
+def _patch_targets(use_jax):
+    """Resolve which module attributes to replace, and with which class.
 
-    lenstronomy offers no hook to inject an image model class, so the class it resolves
-    at instantiation time is replaced for the duration of the context and restored
-    afterwards.
+    :param use_jax: if `True`, patch JAXtronomy instead of lenstronomy
+    :type use_jax: `bool`
+    :return: list of `(module name, attribute name, replacement class)`
+    :rtype: `list` of `tuple`
+    """
+    if not use_jax:
+        return [
+            (name, attribute, NonNegativeMGESingleBandMultiModel)
+            for name, attribute in _PATCH_TARGETS
+        ]
+
+    # imported here because it pulls in JAX, which must not happen unless the caller
+    # asked for it
+    from . import nn_mge_jax
+
+    return [
+        (name, attribute, nn_mge_jax.NonNegativeMGESingleBandMultiModel)
+        for name, attribute in nn_mge_jax.PATCH_TARGETS
+    ] + [
+        (name, attribute, NonNegativeMGESingleBandMultiModel)
+        for name, attribute in nn_mge_jax.LENSTRONOMY_PATCH_TARGETS
+    ]
+
+
+@contextlib.contextmanager
+def nn_mge_solver(enabled=True, use_jax=False):
+    """Make lenstronomy or JAXtronomy build image models that solve for non-negative MGE
+    amplitudes.
+
+    Neither package offers a hook to inject an image model class, so the class each
+    resolves at instantiation time is replaced for the duration of the context and
+    restored afterwards.
 
     :param enabled: if `False`, this is a no-op
     :type enabled: `bool`
+    :param use_jax: if `True`, patch JAXtronomy instead of lenstronomy
+    :type use_jax: `bool`
     :return: whether the solver is active
     :rtype: `bool`
     """
@@ -420,17 +450,18 @@ def nn_mge_solver(enabled=True):
         yield False
         return
 
-    modules = [importlib.import_module(name) for name, _ in _PATCH_TARGETS]
+    targets = _patch_targets(use_jax)
+    modules = [importlib.import_module(name) for name, _, _ in targets]
     originals = [
         getattr(module, attribute)
-        for module, (_, attribute) in zip(modules, _PATCH_TARGETS)
+        for module, (_, attribute, _) in zip(modules, targets)
     ]
 
-    for module, (_, attribute) in zip(modules, _PATCH_TARGETS):
-        setattr(module, attribute, NonNegativeMGESingleBandMultiModel)
+    for module, (_, attribute, replacement) in zip(modules, targets):
+        setattr(module, attribute, replacement)
 
     try:
         yield True
     finally:
-        for module, (_, attribute), original in zip(modules, _PATCH_TARGETS, originals):
+        for module, (_, attribute, _), original in zip(modules, targets, originals):
             setattr(module, attribute, original)

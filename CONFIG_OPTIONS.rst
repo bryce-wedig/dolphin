@@ -296,9 +296,10 @@ Lens Light Options
         the unconstrained solver returns Gaussians with alternating large positive and
         negative amplitudes that absorb flux from the lensed source. The constraint is applied
         to the MGE amplitudes only, since the shapelet source basis needs negative
-        coefficients. Pass ``use_nn_mge=False`` to ``Processor.swim()`` to use
-        ``lenstronomy``'s unconstrained solver instead. This solver is not available through
-        JAXtronomy, so ``use_jax=True`` is not supported for MGE lens light models.
+        coefficients. Pass ``use_nn_mge=False`` to ``Processor.swim()`` to use the
+        unconstrained solver instead. The constrained solver is available with both
+        ``lenstronomy`` and JAXtronomy, and the JAXtronomy implementation is differentiable,
+        so it can be used with the gradient descent recipes.
 
 Source Light Options
 --------------------

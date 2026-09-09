@@ -74,8 +74,9 @@ class Processor(object):
         :type use_jax: `bool`
         :param use_nn_mge: if `True`, solves the semi-linear inversion with non-negative
             MGE amplitudes (He et al. 2024). If `None`, this is enabled whenever the lens light
-            model contains an MGE profile. Set to `False` to use lenstronomy's unconstrained
-            solver. Not supported together with `use_jax`.
+            model contains an MGE profile. Set to `False` to use the unconstrained solver.
+            Supported for both lenstronomy and JAXtronomy; the JAXtronomy solver is
+            differentiable, so it works with the gradient descent recipes.
         :type use_nn_mge: `bool` or `None`
         :return: None
         :rtype: `None`
@@ -86,16 +87,6 @@ class Processor(object):
 
         if use_nn_mge is None:
             use_nn_mge = config.has_mge_lens_light
-
-        if use_jax and use_nn_mge:
-            raise NotImplementedError(
-                "The non-negative MGE linear solver is implemented for lenstronomy "
-                "only, and it is used by default for a lens light model containing "
-                "'MGE_SET' or 'MGE_SET_ELLIPSE'. Set use_jax=False to model this "
-                "system, or use_nn_mge=False to fall back to JAXtronomy's "
-                "unconstrained weighted-least-squares inversion, which returns "
-                "negative Gaussian amplitudes."
-            )
 
         if log and pool.is_master():
             log_file = open(
@@ -151,7 +142,7 @@ class Processor(object):
         )
         print(f"Optimizing model for {lens_name} with recipe: {recipe_name}.")
 
-        with nn_mge_solver(enabled=use_nn_mge):
+        with nn_mge_solver(enabled=use_nn_mge, use_jax=use_jax):
             fit_output = fitting_sequence.fit_sequence(fitting_kwargs_list)
         kwargs_result = fitting_sequence.best_fit(bijective=False)
         multi_band_list_out = fitting_sequence.multi_band_list

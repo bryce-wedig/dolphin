@@ -4,7 +4,6 @@
 from pathlib import Path
 
 import pytest
-import sys
 
 from copy import deepcopy
 
@@ -113,6 +112,7 @@ class TestProcessor(object):
                 log=False,
                 recipe_name="galaxy-galaxy-gradient-descent",
             )
+
     def test_swim_mge(self):
         """Test `swim` method for an MGE lens light model."""
         self.processor.swim(
@@ -148,18 +148,60 @@ class TestProcessor(object):
 
         assert saved["use_nn_mge"] is False
 
-    def test_swim_mge_use_jax(self):
-        """Test that the non-negative MGE solver is not supported by JAXtronomy."""
-        stdout = sys.stdout
+    def test_swim_mge_use_jax(self, monkeypatch):
+        """Test `swim` on an MGE lens light model through JAXtronomy."""
+        from dolphin.processor import nn_mge_jax
 
-        with pytest.raises(NotImplementedError):
-            self.processor.swim("lens_system2_mge", "test", use_jax=True)
+        solve_count = []
+        solver = nn_mge_jax.get_param_bounded_WLS
+        monkeypatch.setattr(
+            nn_mge_jax,
+            "get_param_bounded_WLS",
+            lambda *args, **kwargs: (
+                solve_count.append(1),
+                solver(*args, **kwargs),
+            )[1],
+        )
 
-        # the exception is raised before the log file replaces the standard output
-        assert sys.stdout is stdout
+        self.processor.swim(
+            "lens_system2_mge",
+            "test",
+            log=False,
+            recipe_name="galaxy-galaxy",
+            use_jax=True,
+        )
 
-        with pytest.raises(NotImplementedError):
-            self.processor.swim("lens_system1", "test", use_jax=True, use_nn_mge=True)
+        # the bounded solver was used for the fit itself, not only for the model plot
+        # below, which is built by lenstronomy whatever the fit was run with
+        assert len(solve_count) > 0
+
+        output = Output(_TEST_IO_DIR)
+        saved = output.load_output("lens_system2_mge", "test", verbose=False)
+        assert saved["use_nn_mge"] is True
+        assert saved["jaxtronomy_version"] is not None
+
+        model_plot, _ = output.get_model_plot_instance("lens_system2_mge", "test")
+        kwargs_lens_light = model_plot._band_plot_list[0]._kwargs_lens_light_partial
+        amp = np.atleast_1d(kwargs_lens_light[0]["amp"])
+
+        assert len(amp) == 20
+        assert np.all(amp >= 0)
+
+    def test_swim_mge_use_jax_without_nn_mge(self):
+        """Test that the unconstrained solver can be selected through JAXtronomy."""
+        self.processor.swim(
+            "lens_system2_mge",
+            "test",
+            log=False,
+            recipe_name="galaxy-galaxy",
+            use_jax=True,
+            use_nn_mge=False,
+        )
+
+        output = Output(_TEST_IO_DIR)
+        saved = output.load_output("lens_system2_mge", "test", verbose=False)
+
+        assert saved["use_nn_mge"] is False
 
     def test_get_kwargs_data_joint(self):
         """Test `get_kwargs_data_joint` method."""
