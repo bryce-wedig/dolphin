@@ -41,6 +41,7 @@ class Output(Processor):
         self._dolphin_version = None
         self._lenstronomy_version = None
         self._jaxtronomy_version = None
+        self._use_nn_mge = None
 
     @property
     def fit_output(self):
@@ -161,6 +162,34 @@ class Output(Processor):
         """
         return self._jaxtronomy_version
 
+    @property
+    def use_nn_mge(self):
+        """Whether the run solved for non-negative MGE amplitudes.
+
+        :return: the flag the run was made with, or `None` for an output that predates it
+        :rtype: `bool` or `None`
+        """
+        return self._use_nn_mge
+
+    def _nn_mge_enabled(self, config):
+        """Whether to rebuild models with the non-negative MGE solver.
+
+        Honors what the run actually did. Falling back to the lens light model, as this
+        used to, is right only for an output that predates the flag: a run made with
+        `use_nn_mge=False` would otherwise be reopened with a solver it never used, and so
+        would a run whose linear solve was constrained by something else entirely, since
+        this solver replaces `SingleBandMultiModel.image_linear_solve` and would bypass it.
+
+        :param config: config for the lens being reopened
+        :type config: `dolphin.processor.config.ModelConfig`
+        :return: `True` if the non-negative MGE solver should be used
+        :rtype: `bool`
+        """
+        if self._use_nn_mge is None:
+            return config.has_mge_lens_light
+
+        return self._use_nn_mge
+
     def swim(self, *args, **kwargs):
         """Override the `swim` method of the `Processor` class to make it not callable.
 
@@ -194,6 +223,7 @@ class Output(Processor):
         self._dolphin_version = output.get("dolphin_version", "unknown")
         self._lenstronomy_version = output.get("lenstronomy_version", "unknown")
         self._jaxtronomy_version = output.get("jaxtronomy_version", None)
+        self._use_nn_mge = output.get("use_nn_mge", None)
 
         if self.fit_output[-1][0] in ["emcee", "Nautilus"]:
             self._posterior_samples = self.fit_output[-1][1]
@@ -276,7 +306,7 @@ class Output(Processor):
 
         # `ModelPlot` solves for the linear amplitudes on construction, so it needs the
         # same solver the fit used.
-        with nn_mge_solver(enabled=config.has_mge_lens_light):
+        with nn_mge_solver(enabled=self._nn_mge_enabled(config)):
             model_plot = ModelPlot(
                 multi_band_list_out,
                 kwargs_model,
@@ -932,7 +962,7 @@ class Output(Processor):
         # kwargs_data = multi_band_list_out[band_index][0]
         # kwargs_psf = multi_band_list_out[band_index][1]
 
-        with nn_mge_solver(enabled=config.has_mge_lens_light):
+        with nn_mge_solver(enabled=self._nn_mge_enabled(config)):
             im_sim = create_im_sim(
                 multi_band_list_out,
                 "single-band",
