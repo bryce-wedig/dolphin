@@ -1,0 +1,14 @@
+# Outputs written here by `Processor.swim()` and by the test suite: results of test
+# runs and of ad-hoc fits, which are not worth versioning. The example outputs that
+# the notebooks and the tests read back are tracked, and are re-listed below so that
+# a fresh copy of one is still picked up by `git add`.
+output_*
+photometry_*
+semantic_segmentation_*
+
+!output_lens_system1_example.h5
+!output_lens_system1_gradient_descent.h5
+!output_lens_system2_example.h5
+!output_lensed_quasar_example.h5
+!semantic_segmentation_lensed_quasar_F814W.npy
+!semantic_segmentation_lensed_quasar_2_F814W.npy
