@@ -10,8 +10,17 @@ model:
 lens_options:
   centroid_init: [0.04, -0.04]
 
+# lens_light_options:
+#   fix: {0: {n_sersic: 4.}}   # fix n_sersic to 4. for 0-th light profile
+
 lens_light_options:
-  fix: {0: {n_sersic: 4.}}   # fix n_sersic to 4. for 0-th light profile
+  mge_config:
+    0:
+      n_comp: 10
+  fix:
+    0:
+      sigma_min: 0.008
+      sigma_width: 2.5
 
 source_light_options:
   n_max: [4] # array with n_max for each band
